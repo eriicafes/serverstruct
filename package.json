@@ -1,0 +1,55 @@
+{
+  "name": "serverstruct",
+  "version": "0.1.0",
+  "description": "Type safe and modular servers with Hono",
+  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "prebuild": "shx rm -rf dist",
+    "build": "tsc --noEmit && tsup src/index.ts --format esm,cjs --dts",
+    "release": "pnpm run build && changeset publish",
+    "watch": "vitest",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "command",
+    "cli",
+    "sade",
+    "hollywood-di",
+    "typescript"
+  ],
+  "author": "Eric Afes <eriicafes@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eriicafes/serverstruct.git"
+  },
+  "bugs": {
+    "url": "https://github.com/eriicafes/serverstruct/issues"
+  },
+  "homepage": "https://github.com/eriicafes/serverstruct#readme",
+  "dependencies": {
+    "auto-bind": "^5.0.1"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.26.2",
+    "@types/node": "^20.4.2",
+    "shx": "^0.3.4",
+    "tsup": "^7.1.0",
+    "typescript": "^5.1.6",
+    "vitest": "^0.33.0"
+  },
+  "peerDependencies": {
+    "hollywood-di": ">= 0.2.1",
+    "hono": ">= 3.3.0"
+  }
+}
