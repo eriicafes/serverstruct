@@ -18,7 +18,7 @@
     "build": "tsc --noEmit && tsup src/index.ts --format esm,cjs --dts",
     "release": "pnpm run build && changeset publish",
     "watch": "vitest",
-    "test": "NODE_OPTIONS=--experimental-vm-modules vitest run"
+    "test": "vitest run"
   },
   "keywords": [
     "command",
