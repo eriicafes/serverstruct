@@ -1,7 +1,8 @@
+import { createAdaptorServer } from "@hono/node-server"
 import { factory, Hollywood, inferContainer } from "hollywood-di"
 import { Hono } from "hono"
-import { describe } from "node:test"
-import { expect, test } from "vitest"
+import request from "supertest"
+import { describe, expect, test } from "vitest"
 import { createController, serverstruct } from "../src"
 
 describe("Controller", () => {
@@ -25,16 +26,16 @@ describe("Controller", () => {
     })
 
     serverstruct(app, container).controllers(controller1, controller2)
+    const server = createAdaptorServer(app)
 
     test("matches controller routes", async () => {
-        const res = await app.request("/")
-        const body = await res.text()
+        const res = await request(server).get("/")
         expect(res.status).toBe(201)
-        expect(body).toBe("success")
+        expect(res.text).toBe("success")
     })
 
     test("controller can access container", async () => {
-        const res = await app.request("/env").then(res => res.json())
-        expect(res).toStrictEqual({ env: container.instances.env })
+        const res = await request(server).get("/env")
+        expect(res.body).toStrictEqual({ env: container.instances.env })
     })
 })
