@@ -2,7 +2,7 @@
   "name": "serverstruct",
   "version": "0.1.0",
   "description": "Type safe and modular servers with Hono",
-  "private": true,
+  "private": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -49,7 +49,8 @@
     "supertest": "^6.3.3",
     "tsup": "^7.1.0",
     "typescript": "^5.1.6",
-    "vitest": "^0.33.0"
+    "vitest": "^0.33.0",
+    "vitest-environment-miniflare": "^2.14.0"
   },
   "peerDependencies": {
     "hollywood-di": ">= 0.2.1",
