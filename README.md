@@ -69,32 +69,17 @@ export default app;
 A route returns a new Hono app and may compose other routes with `subroutes<{ ... }>()`. If you intend to utilize dependency injection, a route can require it's dependencies with `use<{ ... }>()` and provide new dependencies with `provide({ ... })`. A route with dependencies can only be added as a subroute to another route if that route satisfies it's dependencies.
 
 ```ts
-const auth = createRoute()
-  .provide({
-    // provide tokens here
-  })
-  .route((app) => {
-    return app; // chain route handlers here
-  });
+const auth = createRoute().route((app) => {
+  return app; // chain route handlers here
+});
 
-const users = createRoute()
-  .use({
-    // define dependencies here
-  })
-  .route((app) => {
-    return app; // chain route handlers here
-  });
+const users = createRoute().route((app) => {
+  return app; // chain route handlers here
+});
 
-const posts = createRoute()
-  .use({
-    // define dependencies here
-  })
-  .provide({
-    // provide tokens here
-  })
-  .route((app) => {
-    return app; // chain route handlers here
-  });
+const posts = createRoute().route((app) => {
+  return app; // chain route handlers here
+});
 
 const app = createRoute()
   .subroutes({ auth, users, posts })
