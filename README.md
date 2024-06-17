@@ -117,7 +117,7 @@ A root container can also be passed to the route. If no container is explicitly 
 
 ### Use
 
-Define route dependencies. The command can then only be used in a context that satisfies it's dependencies.
+Define route dependencies. The route can then only be used in a context that satisfies it's dependencies.
 
 You can only call `use` once and only before calling `provide`.
 
@@ -165,7 +165,7 @@ Provide creates a new child container. Registered tokens can then be used in the
 
 ```ts
 import { defineInit } from "hollywood-di";
-import { createCommand } from "commandstruct";
+import { createRoute } from "serverstruct";
 
 class Foo {}
 class Bar {
