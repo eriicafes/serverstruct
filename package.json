@@ -18,7 +18,8 @@
     "build": "tsc --noEmit && tsup src/index.ts --format esm,cjs --dts",
     "release": "pnpm run build && changeset publish",
     "watch": "vitest",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "command",
@@ -37,22 +38,18 @@
     "url": "https://github.com/eriicafes/serverstruct/issues"
   },
   "homepage": "https://github.com/eriicafes/serverstruct#readme",
-  "dependencies": {
-    "auto-bind": "^5.0.1"
-  },
   "devDependencies": {
     "@changesets/cli": "^2.26.2",
-    "@hono/node-server": "^1.1.0",
     "@types/node": "^20.4.2",
     "@types/supertest": "^2.0.12",
+    "@vitest/coverage-v8": "^1.6.0",
     "shx": "^0.3.4",
-    "supertest": "^6.3.3",
     "tsup": "^7.1.0",
     "typescript": "^5.1.6",
-    "vitest": "^0.33.0"
+    "vitest": "^1.6.0"
   },
   "peerDependencies": {
-    "hollywood-di": ">= 0.2.1",
-    "hono": ">= 3.3.0"
+    "hollywood-di": ">= 0.5.2",
+    "hono": ">= 4.0.0"
   }
 }
