@@ -8,8 +8,8 @@ class Counter {
 
 describe("Container", () => {
   test("'use' reuses the parent container", async () => {
-    const routeAction = vi.fn<[Counter]>();
-    const childRouteAction = vi.fn<[Counter]>();
+    const routeAction = vi.fn();
+    const childRouteAction = vi.fn();
 
     const childRoute = createRoute()
       .use<{ counter: Counter }>()
@@ -43,8 +43,8 @@ describe("Container", () => {
   });
 
   test("'provides' creates a child container", async () => {
-    const routeAction = vi.fn<[Counter]>();
-    const childRouteAction = vi.fn<[Counter]>();
+    const routeAction = vi.fn();
+    const childRouteAction = vi.fn();
 
     const childRoute = createRoute()
       .use<{ counter: Counter }>()

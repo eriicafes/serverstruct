@@ -1,0 +1,5 @@
+---
+"serverstruct": patch
+---
+
+Update dependencies
