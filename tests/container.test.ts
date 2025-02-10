@@ -1,6 +1,6 @@
 import { scoped } from "hollywood-di";
 import { describe, expect, test, vi } from "vitest";
-import { createRoute } from "../src";
+import { createModule } from "../src";
 
 class Counter {
   public count = 0;
@@ -11,30 +11,30 @@ describe("Container", () => {
     const routeAction = vi.fn();
     const childRouteAction = vi.fn();
 
-    const childRoute = createRoute()
+    const child = createModule()
       .use<{ counter: Counter }>()
-      .route((app, container) =>
-        app.get("/", (c) => {
+      .route((app, container) => {
+        return app.get("/", (c) => {
           childRouteAction(container.counter);
           return c.text("ok");
-        })
-      );
+        });
+      });
 
-    const route = createRoute()
+    const base = createModule()
       .provide({
         counter: scoped(Counter),
       })
-      .subroutes({ child: childRoute })
-      .route((app, container, routes) =>
-        app
+      .submodules({ child })
+      .route((app, container, modules) => {
+        return app
           .use((_, next) => {
             routeAction(container.counter);
             return next();
           })
-          .route("", routes.child)
-      );
+          .route("", modules.child);
+      });
 
-    const _ = await route.app().request("/");
+    await base.app().request("/");
     expect(routeAction.mock.lastCall?.[0]).not.toBeUndefined();
     expect(childRouteAction.mock.lastCall?.[0]).not.toBeUndefined();
     expect(routeAction.mock.lastCall?.[0]).toBe(
@@ -46,7 +46,7 @@ describe("Container", () => {
     const routeAction = vi.fn();
     const childRouteAction = vi.fn();
 
-    const childRoute = createRoute()
+    const child = createModule()
       .use<{ counter: Counter }>()
       .provide({})
       .route((app, container) =>
@@ -56,22 +56,21 @@ describe("Container", () => {
         })
       );
 
-    const route = createRoute()
+    const base = createModule()
       .provide({
         counter: scoped(Counter),
       })
-      .subroutes({ child: childRoute })
-      .route((app, container, routes) =>
+      .submodules({ child })
+      .route((app, container, modules) =>
         app
           .use((_, next) => {
             routeAction(container.counter);
             return next();
           })
-          .route("", routes.child)
+          .route("", modules.child)
       );
 
-    route.app();
-    const _ = await route.app().request("/");
+    await base.app().request("/");
     expect(routeAction.mock.lastCall?.[0]).not.toBeUndefined();
     expect(childRouteAction.mock.lastCall?.[0]).not.toBeUndefined();
     expect(routeAction.mock.lastCall?.[0]).not.toBe(
