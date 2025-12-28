@@ -31,7 +31,7 @@ jobs:
         run: pnpm build
 
   release:
-    name: Release or Publish
+    name: Release
     needs: build
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
