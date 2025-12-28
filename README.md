@@ -1,211 +1,210 @@
 # Serverstruct
 
-⚡️ Typesafe and modular servers with [Hono](https://github.com/honojs/hono).
+⚡️ Typesafe and modular servers with [H3](https://github.com/unjs/h3).
 
-Serverstruct is a simple tool for building fast, modular and typesafe server applications with Hono and [Hollywood DI](https://github.com/eriicafes/hollywood-di).
+Serverstruct provides simple helpers for building modular h3 applications with dependency injection using [getbox](https://github.com/eriicafes/getbox).
 
 ## Installation
 
-Serverstruct requires you to install hono.
-
 ```sh
-npm i serverstruct hono
+npm i serverstruct h3 getbox
 ```
 
-To make use of dependency injection provided by serverstruct, also install hollywood-di.
+## Quick Start
 
-```sh
-npm i serverstruct hono hollywood-di
+```typescript
+import { application } from "serverstruct";
+
+const app = application((app) => {
+  app.get("/", () => "Hello world!");
+});
+
+await app.serve({ port: 3000 });
 ```
 
-## Usage
+## Composing Apps
 
-### A simple app
+Create modular h3 apps and mount them together:
 
-```ts
-import { createModule } from "serverstruct";
+```typescript
+import { application } from "serverstruct";
+import { H3 } from "h3";
 
-const app = createModule()
-  .route((app) => {
-    return app.get("/", (c) => c.text("Hello world!"));
-  })
-  .app();
+// Create a users module
+function createUsersApp() {
+  const app = new H3();
+  const users: User[] = [];
 
-export default app;
-```
-
-### An app with submodules
-
-```ts
-import { createModule } from "serverstruct";
-
-// users routes
-const users = createModule().route((app) => {
-  return app.get("/", (c) => c.text("users"));
-});
-
-// posts routes
-const posts = createModule().route((app) => {
-  return app.get("/", (c) => c.text("posts"));
-});
-
-const app = createModule()
-  .submodules({ users, posts })
-  .route((app, container, modules) => {
-    return app
-      .get("/", (c) => c.text("Hello world!"))
-      .route("/users", modules.users)
-      .route("/posts", modules.posts);
-  })
-  .app();
-
-export default app;
-```
-
-## Module
-
-A module is a Hono app that may require dependencies or provide dependencies of it's own. A module may compose other submodules. A module with dependencies can only be used as a submodule to another module if that module satisfies it's dependencies.
-
-```ts
-import { createModule } from "serverstruct";
-
-const auth = createModule().route((app) => {
-  return app; // chain route handlers here
-});
-
-const users = createModule().route((app) => {
-  return app; // chain route handlers here
-});
-
-const app = createModule()
-  .submodules({ auth, users })
-  .route((app, container, modules) => {
-    return app.route("/auth", modules.auth).route("/users", modules.users);
-  })
-  .app();
-```
-
-Submodules are not automatically added to the Hono app, you will have to manually mount each route. This helps in preserving Hono's type inference through method chaining.
-
-You may also pass a custom Hono app to createModule.
-
-```ts
-import { Hono } from "hono";
-import { createModule } from "serverstruct";
-
-const auth = createModule(new Hono().basePath("/auth")).route((app) => {
-  return app; // chain route handlers here
-});
-
-const users = createModule(new Hono().basePath("/users")).route((app) => {
-  return app; // chain route handlers here
-});
-
-const app = createModule()
-  .submodules({ auth, users })
-  .route((app, container, modules) => {
-    return app.route("", modules.auth).route("", modules.users);
-  })
-  .app();
-```
-
-## Dependency Injection
-
-Serverstruct is designed to work with [Hollywood DI](https://github.com/eriicafes/hollywood-di). Modules can define their dependencies using `use`, and also register new tokens using `provide`.
-
-A root container can also be passed to a module. If no container is explicitly provided the first call to provide creates a root container and futher calls to provide will inherit from it.
-
-### Use
-
-Define module dependencies. The module can then only be used in a context that satisfies it's dependencies.
-
-You can only call `use` once and only before calling `provide`.
-
-```ts
-import { Hollywood } from "hollywood-di";
-import { createModule } from "serverstruct";
-
-interface Counter {
-  count: number;
-  increment(): void;
-}
-
-const countModule = createModule()
-  .use<{ counter: Counter }>()
-  .route((app, container) => {
-    return app.get("/", (c) => {
-      container.counter.increment();
-      return c.text(`Count is: ${container.counter.count}`);
-    });
+  app.get("/", () => users);
+  app.post("/", async (event) => {
+    const body = await readValidatedBody(event, validateUser);
+    users.push(body);
+    return body;
   });
 
-class LinearCounter {
-  public count = 0;
-  public increment() {
-    this.count++;
-  }
+  return app;
 }
 
-// as a submodule
-const app = createModule()
-  .provide({ counter: LinearCounter })
-  .submodules({ count: countModule })
-  .route((app, _, modules) => {
-    return app.route("", modules.count);
-  })
-  .app();
+// Compose in main app
+const app = application((app) => {
+  app.get("/ping", () => "pong");
+  app.mount("/users", createUsersApp());
+});
 
-// or as the main app
-const container = Hollywood.create({ counter: LinearCounter });
-const app = countModule.app(container);
+await app.serve({ port: 3000 });
 ```
 
-Calling `Module.app()` returns the Hono app, so if the module has dependencies (by calling `use`), a container that satisfies those dependencies must be provided as seen in the example above.
+You can also create and return a new H3 instance:
 
-### Provide
+```typescript
+import { H3 } from "h3";
 
-Provide creates a new child container. Registered tokens can then be used in the module and in futher calls to `provide`. See more about register tokens in [Hollywood DI](https://github.com/eriicafes/hollywood-di#tokens).
-
-```ts
-import { createModule } from "serverstruct";
-
-class Foo {}
-class Bar {
-  constructor(public ctx: { foo: Foo }) {}
-}
-
-const module = createModule()
-  .provide({
-    foo: Foo,
-    bar: Bar,
-  })
-  .module((app, container) => {
-    return app;
-  });
+const app = application(() => {
+  const customApp = new H3();
+  customApp.get("/", () => "Hello from custom app!");
+  return customApp;
+});
 ```
 
-## Incremental Adoption
+## Controllers with Dependency Injection
 
-Serverstruct can be added to an existing Hono app.
+Use `controller()` to create reusable modules with shared dependencies.
 
-```ts
-// modules/posts.ts
-import { createModule } from "serverstruct";
+The `controller()` function integrates with [getbox](https://github.com/eriicafes/getbox) for dependency injection:
 
-export const postsModule = createModule().route((app) => {
-  return app.get("/", (c) => {
-    return c.text("posts");
+```typescript
+import { application, controller } from "serverstruct";
+
+// Define a controller
+const usersController = controller((app) => {
+  const users: User[] = [];
+
+  app.get("/", () => users);
+  app.post("/", async (event) => {
+    const body = await readValidatedBody(event, validateUser);
+    users.push(body);
+    return body;
   });
 });
 
-// main.ts
-import { Hono } from "hono";
-import { postsModule } from "./modules/posts";
+// Use it in your main app
+const app = application((app, box) => {
+  app.get("/ping", () => "pong");
+  app.mount("/users", box.new(usersController));
+});
 
-const app = new Hono();
-
-app.get("/", (c) => c.text("Hello world!"));
-app.route("/posts", postsModule.app());
-
-export default app;
+await app.serve({ port: 3000 });
 ```
+
+The `box` parameter is a getbox `Box` instance that manages dependencies as singletons.
+
+## Sharing Dependencies
+
+Controllers can share dependencies using the `box` parameter.
+
+Use `box.get(Class)` to retrieve or create a singleton instance:
+
+```typescript
+import { application, controller } from "serverstruct";
+
+// A shared service
+class Database {
+  users: User[] = [];
+
+  getUsers() { return this.users; }
+  addUser(user: User) { this.users.push(user); }
+}
+
+// Controller uses box.get() to access the database
+const usersController = controller((app, box) => {
+  const db = box.get(Database);
+
+  app.get("/", () => db.getUsers());
+  app.post("/", async (event) => {
+    const body = await readValidatedBody(event, validateUser);
+    db.addUser(body);
+    return body;
+  });
+});
+
+// Another controller can access the same database
+const statsController = controller((app, box) => {
+  const db = box.get(Database);
+
+  app.get("/count", () => ({ count: db.getUsers().length }));
+});
+
+const app = application((app, box) => {
+  app.mount("/users", box.new(usersController));
+  app.mount("/stats", box.new(statsController));
+});
+
+await app.serve({ port: 3000 });
+```
+
+**Key points:**
+- `box.get(Class)` creates the instance on first call, then caches it
+- `box.new(controller)` creates a fresh controller instance each time
+- All controllers share the same Box instance
+- All `box.get(Database)` calls return the same Database instance
+
+## Middleware
+
+Use h3's native middleware with `app.use()`:
+
+```typescript
+const app = application((app) => {
+  // Global middleware
+  app.use(() => console.log("Request received"));
+
+  app.get("/", () => "Hello world!");
+});
+```
+
+Controllers can have their own middleware:
+
+```typescript
+const usersController = controller((app) => {
+  // Runs only for routes in this controller
+  app.use(() => console.log("Users route accessed"));
+
+  app.get("/", () => [...]);
+  app.post("/", async () => {...});
+});
+```
+
+## Advanced: Custom Box Instance
+
+Pass your own Box instance to `application()` for more control:
+
+```typescript
+import { Box } from "getbox";
+
+const box = new Box();
+
+// Pre-populate with dependencies
+Box.mock(box, Database, new Database());
+
+const app = application((app, box) => {
+  app.mount("/users", box.new(usersController));
+}, box);
+```
+
+## API Reference
+
+### `application(fn, box?)`
+
+Creates an h3 application with DI support.
+
+- **Parameters:**
+  - `fn: (app: H3, box: Box) => H3 | void` - Configures the app
+  - `box?: Box` - Optional Box instance (creates new one if not provided)
+- **Returns:** `{ app: H3, serve: (options?) => Promise<Server> }`
+
+### `controller(fn)`
+
+Creates a getbox Constructor that produces an h3 app.
+
+- **Parameters:**
+  - `fn: (app: H3, box: Box) => H3 | void` - Configures the controller
+- **Returns:** `Constructor<H3>` - Resolved via `box.new(controller)`

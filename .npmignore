@@ -1,8 +1,10 @@
 .changeset
 .github
 .vscode
+.DS_Store
 src
 tests
+coverage
 pnpm-lock.yaml
 tsconfig.json
 vitest.config.mts
