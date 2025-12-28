@@ -1,5 +1,5 @@
 ---
-"serverstruct": major
+"serverstruct": minor
 ---
 
 Migrate from `hono` and `hollywood-di` to `h3` and `getbox`.
