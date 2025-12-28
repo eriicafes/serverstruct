@@ -1,5 +1,11 @@
 # serverstruct
 
+## 1.0.0
+
+### Major Changes
+
+- 78a41c4: Release v1
+
 ## 0.4.0
 
 ### Minor Changes
