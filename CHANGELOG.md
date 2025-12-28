@@ -1,5 +1,13 @@
 # serverstruct
 
+## 0.4.0
+
+### Minor Changes
+
+- 84d056e: Migrate from `hono` and `hollywood-di` to `h3` and `getbox`.
+
+  Replace `createModule()` with `application(fn, box?)` and `controller(fn)`.
+
 ## 0.3.0
 
 ### Minor Changes
