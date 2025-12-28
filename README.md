@@ -19,7 +19,7 @@ const app = application((app) => {
   app.get("/", () => "Hello world!");
 });
 
-await app.serve({ port: 3000 });
+app.serve({ port: 3000 });
 ```
 
 ## Composing Apps
@@ -28,11 +28,9 @@ Create modular h3 apps and mount them together:
 
 ```typescript
 import { application } from "serverstruct";
-import { H3 } from "h3";
 
 // Create a users module
-function createUsersApp() {
-  const app = new H3();
+const { app: usersApp } = application((app) => {
   const users: User[] = [];
 
   app.get("/", () => users);
@@ -41,26 +39,28 @@ function createUsersApp() {
     users.push(body);
     return body;
   });
-
-  return app;
-}
+});
 
 // Compose in main app
 const app = application((app) => {
   app.get("/ping", () => "pong");
-  app.mount("/users", createUsersApp());
+  app.mount("/users", usersApp);
 });
 
-await app.serve({ port: 3000 });
+app.serve({ port: 3000 });
 ```
 
-You can also create and return a new H3 instance:
+You can also create and return a new H3 instance to customize H3 options:
 
 ```typescript
 import { H3 } from "h3";
 
 const app = application(() => {
-  const customApp = new H3();
+  const customApp = new H3({
+    onError: (error) => {
+      console.error(error);
+    },
+  });
   customApp.get("/", () => "Hello from custom app!");
   return customApp;
 });
@@ -68,9 +68,7 @@ const app = application(() => {
 
 ## Controllers with Dependency Injection
 
-Use `controller()` to create reusable modules with shared dependencies.
-
-The `controller()` function integrates with [getbox](https://github.com/eriicafes/getbox) for dependency injection:
+Use `controller()` to create reusable modules with shared dependencies. It integrates with [getbox](https://github.com/eriicafes/getbox) for dependency injection:
 
 ```typescript
 import { application, controller } from "serverstruct";
@@ -93,10 +91,10 @@ const app = application((app, box) => {
   app.mount("/users", box.new(usersController));
 });
 
-await app.serve({ port: 3000 });
+app.serve({ port: 3000 });
 ```
 
-The `box` parameter is a getbox `Box` instance that manages dependencies as singletons.
+The `box` parameter is a getbox `Box` instance that manages dependency instances.
 
 ## Sharing Dependencies
 
@@ -115,7 +113,7 @@ class Database {
   addUser(user: User) { this.users.push(user); }
 }
 
-// Controller uses box.get() to access the database
+// Controller uses box to access the database
 const usersController = controller((app, box) => {
   const db = box.get(Database);
 
@@ -142,11 +140,7 @@ const app = application((app, box) => {
 await app.serve({ port: 3000 });
 ```
 
-**Key points:**
-- `box.get(Class)` creates the instance on first call, then caches it
-- `box.new(controller)` creates a fresh controller instance each time
-- All controllers share the same Box instance
-- All `box.get(Database)` calls return the same Database instance
+`box.get(Class)` creates the instance on first call, then caches it.
 
 ## Middleware
 
@@ -173,7 +167,7 @@ const usersController = controller((app) => {
 });
 ```
 
-## Advanced: Custom Box Instance
+## Custom Box Instance
 
 Pass your own Box instance to `application()` for more control:
 
@@ -189,22 +183,3 @@ const app = application((app, box) => {
   app.mount("/users", box.new(usersController));
 }, box);
 ```
-
-## API Reference
-
-### `application(fn, box?)`
-
-Creates an h3 application with DI support.
-
-- **Parameters:**
-  - `fn: (app: H3, box: Box) => H3 | void` - Configures the app
-  - `box?: Box` - Optional Box instance (creates new one if not provided)
-- **Returns:** `{ app: H3, serve: (options?) => Promise<Server> }`
-
-### `controller(fn)`
-
-Creates a getbox Constructor that produces an h3 app.
-
-- **Parameters:**
-  - `fn: (app: H3, box: Box) => H3 | void` - Configures the controller
-- **Returns:** `Constructor<H3>` - Resolved via `box.new(controller)`
