@@ -22,7 +22,7 @@ const app = application((app) => {
 app.serve({ port: 3000 });
 ```
 
-## Composing Apps
+## Apps
 
 Create modular h3 apps and mount them together:
 
@@ -66,9 +66,9 @@ const app = application(() => {
 });
 ```
 
-## Controllers with Dependency Injection
+## Controllers
 
-Use `controller()` to create reusable modules with shared dependencies. It integrates with [getbox](https://github.com/eriicafes/getbox) for dependency injection:
+Use `controller()` to create h3 apps with `getbox` support:
 
 ```typescript
 import { application, controller } from "serverstruct";
@@ -94,82 +94,88 @@ const app = application((app, box) => {
 app.serve({ port: 3000 });
 ```
 
-The `box` parameter is a getbox `Box` instance that manages dependency instances.
+### Sharing Dependencies
 
-## Sharing Dependencies
-
-Controllers can share dependencies using the `box` parameter.
-
-Use `box.get(Class)` to retrieve or create a singleton instance:
+Controllers can share dependencies using the `box` parameter. Use `box.get(Class)` to retrieve or create a singleton instance:
 
 ```typescript
-import { application, controller } from "serverstruct";
-
-// A shared service
 class Database {
   users: User[] = [];
-
-  getUsers() { return this.users; }
-  addUser(user: User) { this.users.push(user); }
 }
 
-// Controller uses box to access the database
 const usersController = controller((app, box) => {
   const db = box.get(Database);
-
-  app.get("/", () => db.getUsers());
-  app.post("/", async (event) => {
-    const body = await readValidatedBody(event, validateUser);
-    db.addUser(body);
-    return body;
-  });
+  app.get("/", () => db.users);
 });
 
-// Another controller can access the same database
 const statsController = controller((app, box) => {
   const db = box.get(Database);
-
-  app.get("/count", () => ({ count: db.getUsers().length }));
+  app.get("/count", () => ({ count: db.users.length }));
 });
 
 const app = application((app, box) => {
   app.mount("/users", box.new(usersController));
   app.mount("/stats", box.new(statsController));
 });
-
-await app.serve({ port: 3000 });
 ```
 
-`box.get(Class)` creates the instance on first call, then caches it.
+Both controllers share the same `Database` instance.
 
-## Middleware
+## Handlers
 
-Use h3's native middleware with `app.use()`:
+Use `handler()` to create route handlers with `getbox` support:
 
 ```typescript
-const app = application((app) => {
-  // Global middleware
-  app.use(() => console.log("Request received"));
+import { application, handler } from "serverstruct";
 
-  app.get("/", () => "Hello world!");
+class UserService {
+  getUser(id: string) {
+    return { id, name: "Alice" };
+  }
+}
+
+// Define a handler
+const getUserHandler = handler((event, box) => {
+  const userService = box.get(UserService);
+  const id = event.context.params?.id;
+  return userService.getUser(id);
+});
+
+// Use it in your app
+const app = application((app, box) => {
+  app.get("/users/:id", box.get(getUserHandler));
 });
 ```
 
-Controllers can have their own middleware:
+## Middleware
+
+Use `middleware()` to create middleware with `getbox` support:
 
 ```typescript
-const usersController = controller((app) => {
-  // Runs only for routes in this controller
-  app.use(() => console.log("Users route accessed"));
+import { application, middleware } from "serverstruct";
 
-  app.get("/", () => [...]);
-  app.post("/", async () => {...});
+class Logger {
+  log(message: string) {
+    console.log(message);
+  }
+}
+
+// Define a middleware
+const logMiddleware = middleware((event, next, box) => {
+  const logger = box.get(Logger);
+  logger.log("Request received");
+});
+
+// Use it in your app
+const app = application((app, box) => {
+  app.use(box.get(logMiddleware));
+  app.get("/", () => "Hello world!");
 });
 ```
 
 ## Custom Box Instance
 
-Pass your own Box instance to `application()` for more control:
+Pass your own Box instance to `application()`:
 
 ```typescript
 import { Box } from "getbox";

@@ -1,30 +1,16 @@
 import { Box, constant } from "getbox";
 import { H3 } from "h3";
-import { describe, expect, test } from "vitest";
-import { application, controller } from "../src";
+import { describe, expect, test, vi } from "vitest";
+import { application, controller, handler, middleware } from "../src";
 
-describe("Route", () => {
-  const EnvToken = constant("testing");
+describe("Application", () => {
+  const EnvToken = constant({ env: "testing" });
   const box = new Box();
-
-  const innerController = controller((app, box) => {
-    const env = box.get(EnvToken);
-    app.get("/env", () => ({ env }));
-  });
-
-  const customController = controller((app, box) => {
-    const customApp = new H3();
-    const env = box.get(EnvToken);
-    customApp.get("/sub/env", () => ({ env }));
-    return customApp;
-  });
 
   const app = application((app, box) => {
     const env = box.get(EnvToken);
     app.get("/", () => "success");
-    app.get("/env", () => ({ env }));
-    app.mount("/inner", box.new(innerController));
-    app.mount("/custom", box.new(customController));
+    app.get("/env", () => env);
   }, box);
 
   test("matches routes", async () => {
@@ -38,6 +24,37 @@ describe("Route", () => {
     expect(await res.json()).toStrictEqual({ env: "testing" });
   });
 
+  test("serve returns a server instance", () => {
+    const server = app.serve({ manual: true });
+
+    expect(server).toBeDefined();
+    expect(typeof server.close).toBe("function");
+    expect(typeof server.serve).toBe("function");
+    expect(server.node).toBeDefined();
+  });
+});
+
+describe("Controller", () => {
+  const EnvToken = constant({ env: "testing" });
+  const box = new Box();
+
+  const innerController = controller((app, box) => {
+    const env = box.get(EnvToken);
+    app.get("/env", () => env);
+  });
+
+  const customController = controller((_app, box) => {
+    const customApp = new H3();
+    const env = box.get(EnvToken);
+    customApp.get("/sub/env", () => env);
+    return customApp;
+  });
+
+  const app = application((app, box) => {
+    app.mount("/inner", box.new(innerController));
+    app.mount("/custom", box.new(customController));
+  }, box);
+
   test("controller can access box dependencies", async () => {
     const res = await app.app.request("/inner/env");
     expect(await res.json()).toStrictEqual({ env: "testing" });
@@ -49,17 +66,125 @@ describe("Route", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ env: "testing" });
   });
+});
 
-  test("serve returns a server instance", () => {
-    const testApp = application((app) => {
-      app.get("/", () => "test");
+describe("Handler", () => {
+  test("handler can access box dependencies", async () => {
+    const ConfigToken = constant({ value: "config" });
+
+    const getConfigHandler = handler((_event, box) => {
+      const config = box.get(ConfigToken);
+      return config;
     });
 
-    const server = testApp.serve({ manual: true });
+    const app = application((app, box) => {
+      app.get("/config", box.get(getConfigHandler));
+    });
 
-    expect(server).toBeDefined();
-    expect(typeof server.close).toBe("function");
-    expect(typeof server.serve).toBe("function");
-    expect(server.node).toBeDefined();
+    const res = await app.app.request("/config");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ value: "config" });
+  });
+
+  test("handler shares box instance with application", async () => {
+    const ConfigToken = constant({ value: "shared" });
+    const box = new Box();
+    const appAction = vi.fn();
+    const handlerAction = vi.fn();
+
+    const getConfigHandler = handler((_event, box) => {
+      const config = box.get(ConfigToken);
+      handlerAction(config);
+      return config;
+    });
+
+    const app = application((app, box) => {
+      const config = box.get(ConfigToken);
+      appAction(config);
+      app.get("/config", box.get(getConfigHandler));
+    }, box);
+
+    await app.app.request("/config");
+
+    // Both should get the same object instance
+    expect(appAction.mock.lastCall?.[0]).toBe(handlerAction.mock.lastCall?.[0]);
+  });
+});
+
+describe("Middleware", () => {
+  test("middleware executes", async () => {
+    const middlewareAction = vi.fn();
+
+    const testMiddleware = middleware((_event, _next, _box) => {
+      middlewareAction();
+    });
+
+    const app = application((app, box) => {
+      app.use(box.get(testMiddleware));
+      app.get("/", () => ({ message: "Success" }));
+    });
+
+    const res = await app.app.request("/");
+    expect(res.status).toBe(200);
+    expect(middlewareAction).toHaveBeenCalled();
+  });
+
+  test("middleware can access box dependencies", async () => {
+    const ConfigToken = constant({ value: "middleware-config" });
+
+    const configMiddleware = middleware((_event, _next, box) => {
+      const config = box.get(ConfigToken);
+      expect(config).toStrictEqual({ value: "middleware-config" });
+    });
+
+    const app = application((app, box) => {
+      app.use(box.get(configMiddleware));
+      app.get("/", () => ({ message: "Success" }));
+    });
+
+    const res = await app.app.request("/");
+    expect(res.status).toBe(200);
+  });
+
+  test("middleware shares box instance with application", async () => {
+    const ConfigToken = constant({ value: "shared" });
+    const box = new Box();
+    const middlewareAction = vi.fn();
+    const appAction = vi.fn();
+
+    const configMiddleware = middleware((_event, _next, box) => {
+      const config = box.get(ConfigToken);
+      middlewareAction(config);
+    });
+
+    const app = application((app, box) => {
+      const config = box.get(ConfigToken);
+      appAction(config);
+      app.use(box.get(configMiddleware));
+      app.get("/", () => ({ message: "Success" }));
+    }, box);
+
+    await app.app.request("/");
+
+    // Both should get the same object instance
+    expect(middlewareAction.mock.lastCall?.[0]).toBe(
+      appAction.mock.lastCall?.[0]
+    );
+  });
+
+  test("middleware can call next", async () => {
+    const logMiddleware = middleware(async (_event, next, _box) => {
+      const result = await next();
+      return result;
+    });
+
+    const app = application((app, box) => {
+      app.use(box.get(logMiddleware));
+      app.get("/", () => ({ message: "Success" }));
+    });
+
+    const res = await app.app.request("/");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ message: "Success" });
   });
 });
