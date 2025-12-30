@@ -2,4 +2,6 @@
 "serverstruct": minor
 ---
 
-Add handler and middleware functions
+Add `handler` and `middleware` functions
+
+Add request-scoped `Context`
