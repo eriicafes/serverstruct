@@ -1,13 +1,18 @@
-import { Box, factory } from "getbox";
+import { Box, Constructor, factory } from "getbox";
 import {
   defineHandler,
   defineMiddleware,
+  EventHandlerObject,
   EventHandlerRequest,
   H3,
   H3Event,
+  Middleware,
   serve,
 } from "h3";
 
+type MaybePromise<T = unknown> = T | Promise<T>;
+
+export type Server = ReturnType<typeof serve>;
 export type ServeOptions = Parameters<typeof serve>[1];
 
 /**
@@ -41,7 +46,11 @@ export type ServeOptions = Parameters<typeof serve>[1];
 export function application(
   setup: (app: H3, box: Box) => H3 | void,
   box = new Box()
-) {
+): {
+  app: H3;
+  box: Box;
+  serve: (options?: ServeOptions) => Server;
+} {
   const defaultApp = new H3();
   const app = setup(defaultApp, box) || defaultApp;
 
@@ -56,7 +65,7 @@ export function application(
  * Creates an h3 app constructor.
  *
  * @param setup - Function that configures the app.
- * @returns A Constructor that produces an h3 app when resolved via `box.new()`.
+ * @returns A Constructor that produces an h3 app.
  *
  * @example
  * ```typescript
@@ -78,7 +87,9 @@ export function application(
  * });
  * ```
  */
-export function controller(setup: (app: H3, box: Box) => H3 | void) {
+export function controller(
+  setup: (app: H3, box: Box) => H3 | void
+): Constructor<H3> {
   return factory((box) => application(setup, box).app);
 }
 
@@ -86,7 +97,7 @@ export function controller(setup: (app: H3, box: Box) => H3 | void) {
  * Creates a handler constructor.
  *
  * @param setup - Handler function that receives the event and Box instance.
- * @returns A Constructor that produces a handler when resolved via `box.get()`.
+ * @returns A Constructor that produces an h3 handler.
  *
  * @example
  * ```typescript
@@ -119,10 +130,47 @@ export function handler<
 }
 
 /**
+ * Creates an event handler constructor from a setup function.
+ *
+ * @param setup - Function that receives Box instance and returns an event handler object.
+ * @returns A Constructor that produces an h3 event handler.
+ *
+ * @example
+ * ```typescript
+ * import { application, eventHandler } from "serverstruct";
+ *
+ * class UserService {
+ *   getUser(id: string) { return { id, name: "Alice" }; }
+ * }
+ *
+ * // Define an event handler
+ * const getUserHandler = eventHandler((box) => ({
+ *   handler(event) {
+ *     const userService = box.get(UserService);
+ *     const id = event.context.params?.id;
+ *     return userService.getUser(id);
+ *   },
+ *   meta: { auth: true }
+ * }));
+ *
+ * // Use it in your app
+ * const app = application((app, box) => {
+ *   app.get("/users/:id", box.get(getUserHandler));
+ * });
+ * ```
+ */
+export function eventHandler<
+  Res = unknown,
+  Req extends EventHandlerRequest = EventHandlerRequest
+>(setup: (box: Box) => EventHandlerObject<Req, Res>) {
+  return factory((box) => defineHandler<Req, Res>(setup(box)));
+}
+
+/**
  * Creates a middleware constructor.
  *
  * @param setup - Middleware function that receives the event, next function, and Box instance.
- * @returns A Constructor that produces middleware when resolved via `box.get()`.
+ * @returns A Constructor that produces an h3 middleware.
  *
  * @example
  * ```typescript
@@ -151,10 +199,10 @@ export function handler<
 export function middleware(
   setup: (
     event: H3Event,
-    next: () => unknown | Promise<unknown | undefined>,
+    next: () => MaybePromise<unknown | undefined>,
     box: Box
-  ) => unknown | Promise<unknown | undefined>
-) {
+  ) => MaybePromise<unknown | undefined>
+): Constructor<Middleware> {
   return factory((box) =>
     defineMiddleware((event, next) => setup(event, next, box))
   );

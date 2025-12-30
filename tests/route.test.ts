@@ -1,7 +1,13 @@
 import { Box, constant } from "getbox";
 import { H3 } from "h3";
 import { describe, expect, test, vi } from "vitest";
-import { application, controller, handler, middleware } from "../src";
+import {
+  application,
+  controller,
+  eventHandler,
+  handler,
+  middleware,
+} from "../src";
 
 describe("Application", () => {
   const EnvToken = constant({ env: "testing" });
@@ -108,6 +114,129 @@ describe("Handler", () => {
 
     // Both should get the same object instance
     expect(appAction.mock.lastCall?.[0]).toBe(handlerAction.mock.lastCall?.[0]);
+  });
+});
+
+describe("EventHandler", () => {
+  test("eventHandler can access box dependencies", async () => {
+    const ConfigToken = constant({ value: "config" });
+
+    const getConfigHandler = eventHandler((box) => ({
+      handler: () => {
+        const config = box.get(ConfigToken);
+        return config;
+      },
+    }));
+
+    const app = application((app, box) => {
+      app.get("/config", box.get(getConfigHandler));
+    });
+
+    const res = await app.app.request("/config");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ value: "config" });
+  });
+
+  test("eventHandler shares box instance with application", async () => {
+    const ConfigToken = constant({ value: "shared" });
+    const box = new Box();
+    const appAction = vi.fn();
+    const handlerAction = vi.fn();
+
+    const getConfigHandler = eventHandler((box) => ({
+      handler: () => {
+        const config = box.get(ConfigToken);
+        handlerAction(config);
+        return config;
+      },
+    }));
+
+    const app = application((app, box) => {
+      const config = box.get(ConfigToken);
+      appAction(config);
+      app.get("/config", box.get(getConfigHandler));
+    }, box);
+
+    await app.app.request("/config");
+
+    // Both should get the same object instance
+    expect(appAction.mock.lastCall?.[0]).toBe(handlerAction.mock.lastCall?.[0]);
+  });
+
+  test("eventHandler with meta option", async () => {
+    const getDataHandler = eventHandler((_box) => ({
+      handler: () => ({ data: "test" }),
+      meta: { auth: true, role: "admin" },
+    }));
+
+    const app = application((app, box) => {
+      const handler = box.get(getDataHandler);
+      app.get("/data", handler);
+
+      // Verify meta is accessible
+      expect(handler.meta).toStrictEqual({ auth: true, role: "admin" });
+    });
+
+    const res = await app.app.request("/data");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ data: "test" });
+  });
+
+  test("eventHandler with middleware option", async () => {
+    const middlewareAction = vi.fn();
+
+    const protectedHandler = eventHandler((_box) => ({
+      handler: () => ({ data: "protected" }),
+      middleware: [
+        () => {
+          middlewareAction();
+        },
+      ],
+    }));
+
+    const app = application((app, box) => {
+      app.get("/protected", box.get(protectedHandler));
+    });
+
+    const res = await app.app.request("/protected");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ data: "protected" });
+    expect(middlewareAction).toHaveBeenCalled();
+  });
+
+  test("eventHandler with multiple options", async () => {
+    const ConfigToken = constant({ value: "multi-config" });
+    const middlewareAction = vi.fn();
+
+    const complexHandler = eventHandler((box) => ({
+      handler: () => {
+        const config = box.get(ConfigToken);
+        return {
+          config,
+        };
+      },
+      meta: { version: "1.0", public: false },
+      middleware: [
+        () => {
+          middlewareAction();
+        },
+      ],
+    }));
+
+    const app = application((app, box) => {
+      const handler = box.get(complexHandler);
+      app.get("/complex", handler);
+
+      // Verify meta is accessible
+      expect(handler.meta).toStrictEqual({ version: "1.0", public: false });
+    });
+
+    const res = await app.app.request("/complex");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({
+      config: { value: "multi-config" },
+    });
+    expect(middlewareAction).toHaveBeenCalled();
   });
 });
 

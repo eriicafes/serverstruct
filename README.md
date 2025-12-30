@@ -85,7 +85,7 @@ serve({ port });
 
 ## Controllers
 
-Use `controller()` to create h3 apps with `getbox` support:
+Use `controller()` to create h3 app constructors:
 
 ```typescript
 import { application, controller } from "serverstruct";
@@ -111,36 +111,9 @@ const app = application((app, box) => {
 app.serve({ port: 3000 });
 ```
 
-### Sharing Dependencies
-
-Controllers can share dependencies using the `box` parameter. Use `box.get(Class)` to retrieve or create a singleton instance:
-
-```typescript
-class Database {
-  users: User[] = [];
-}
-
-const usersController = controller((app, box) => {
-  const db = box.get(Database);
-  app.get("/", () => db.users);
-});
-
-const statsController = controller((app, box) => {
-  const db = box.get(Database);
-  app.get("/count", () => ({ count: db.users.length }));
-});
-
-const app = application((app, box) => {
-  app.mount("/users", box.new(usersController));
-  app.mount("/stats", box.new(statsController));
-});
-```
-
-Both controllers share the same `Database` instance.
-
 ## Handlers
 
-Use `handler()` to create route handlers with `getbox` support:
+Use `handler()` to create h3 handler constructors:
 
 ```typescript
 import { application, handler } from "serverstruct";
@@ -164,9 +137,46 @@ const app = application((app, box) => {
 });
 ```
 
+### Event Handlers
+
+Use `eventHandler()` to create h3 handlers with additional options like metadata and middleware:
+
+```typescript
+import { application, eventHandler } from "serverstruct";
+
+class UserService {
+  getUser(id: string) {
+    return { id, name: "Alice" };
+  }
+}
+
+// Define an event handler with middleware and metadata
+const getUserHandler = eventHandler((box) => ({
+  handler(event) {
+    const userService = box.get(UserService);
+    const id = event.context.params?.id;
+    return userService.getUser(id);
+  },
+  meta: { auth: true },
+  middleware: [
+    (event) => {
+      const token = event.headers.get("authorization");
+      if (!token || token !== "secret-token") {
+        throw new Error("Unauthorized");
+      }
+    },
+  ],
+}));
+
+// Use it in your app
+const app = application((app, box) => {
+  app.get("/users/:id", box.get(getUserHandler));
+});
+```
+
 ## Middleware
 
-Use `middleware()` to create middleware with `getbox` support:
+Use `middleware()` to create h3 middleware constructors:
 
 ```typescript
 import { application, middleware } from "serverstruct";
