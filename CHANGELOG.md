@@ -1,5 +1,13 @@
 # serverstruct
 
+## 1.1.0
+
+### Minor Changes
+
+- 2d657d5: Add `handler`, `eventHandler` and `middleware` functions
+
+  Add request-scoped `Context` with the `context` function.
+
 ## 1.0.0
 
 ### Major Changes
