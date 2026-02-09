@@ -26,6 +26,16 @@
         "types": "./dist/openapi.d.cts",
         "default": "./dist/openapi.cjs"
       }
+    },
+    "./openapi/scalar": {
+      "import": {
+        "types": "./dist/openapi.scalar.d.mts",
+        "default": "./dist/openapi.scalar.mjs"
+      },
+      "require": {
+        "types": "./dist/openapi.scalar.d.cts",
+        "default": "./dist/openapi.scalar.cjs"
+      }
     }
   },
   "scripts": {
@@ -60,6 +70,7 @@
     "vitest": "^4.0.16"
   },
   "peerDependencies": {
+    "@scalar/core": ">=0.3.37",
     "getbox": ">=1.0.0 <2.0.0",
     "h3": ">=2.0.1-rc.6 <3.0.0",
     "zod": ">=4.0.0 <5.0.0",

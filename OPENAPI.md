@@ -261,3 +261,23 @@ const app = application((app, box) => {
   );
 });
 ```
+
+## Scalar API Reference
+
+Serve an interactive API documentation UI powered by [Scalar](https://github.com/scalar/scalar).
+
+```sh
+npm i @scalar/core
+```
+
+```typescript
+import { apiReference } from "serverstruct/openapi/scalar";
+
+app.get("/reference", () =>
+  apiReference({
+    url: "http://localhost:5000/docs",
+  }),
+);
+```
+
+The `url` should point to the endpoint serving your OpenAPI document (see [Generating the Document](#generating-the-document) below).
