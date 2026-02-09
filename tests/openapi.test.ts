@@ -475,6 +475,7 @@ describe("jsonRequest", () => {
     const result = jsonRequest(schema);
 
     expect(result).toStrictEqual({
+      required: true,
       content: {
         "application/json": { schema },
       },
