@@ -4,6 +4,12 @@
 
 Serverstruct provides simple helpers for building modular h3 applications with dependency injection using [getbox](https://github.com/eriicafes/getbox).
 
+## Integrations
+
+### [OpenAPI](./OPENAPI.md)
+
+Define OpenAPI operations alongside your route handlers using Zod schemas. Request parameters and body are validated at runtime, and responses are fully typed. Uses [zod-openapi](https://github.com/samchungy/zod-openapi).
+
 ## Installation
 
 ```sh
