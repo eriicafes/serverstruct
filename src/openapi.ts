@@ -456,6 +456,7 @@ export function jsonRequest<
 > {
   const { content, ...rest } = opts || {};
   return {
+    required: true,
     ...rest,
     content: {
       "application/json": { schema, ...content } as PrettyMerge<
