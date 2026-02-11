@@ -5,12 +5,13 @@ import {
   getValidatedRouterParams,
   H3,
   H3Event,
+  HTTPError,
   readBody,
   readValidatedBody,
   type EventHandlerResponse,
   type RouteOptions,
 } from "h3";
-import { type output } from "zod";
+import { safeParse, ZodError, type output } from "zod";
 import type {
   ZodOpenApiMediaTypeObject,
   ZodOpenApiMetadata,
@@ -30,13 +31,6 @@ export {
 
 // ---- Type inference utilities ----
 
-/** Infer the Zod output type from `requestBody.content["application/json"].schema`. */
-type InferBody<T> = T extends {
-  requestBody: { content: { "application/json": { schema: infer S } } };
-}
-  ? output<S>
-  : unknown;
-
 /** Infer the Zod output type from `requestParams.path`. */
 type InferParams<T> = T extends {
   requestParams: { path: infer S };
@@ -50,6 +44,13 @@ type InferQuery<T> = T extends {
 }
   ? output<S>
   : Record<string, string>;
+
+/** Infer the Zod output type from `requestBody.content["application/json"].schema`. */
+type InferBody<T> = T extends {
+  requestBody: { content: { "application/json": { schema: infer S } } };
+}
+  ? output<S>
+  : unknown;
 
 /** Resolve a response object from `responses` by numeric status code, handling both numeric and string keys. */
 type LookupResponseByStatus<R, Status extends number> = Status extends keyof R
@@ -112,6 +113,15 @@ type ExtractHeadersSchema<T> = T extends {
     : undefined
   : undefined;
 
+/** Extract the raw Zod schema from `requestParams.cookie`, or `undefined` if absent. */
+type ExtractCookiesSchema<T> = T extends {
+  requestParams: { cookie: infer S };
+}
+  ? S extends { _zod: any }
+    ? S
+    : undefined
+  : undefined;
+
 /** Extract numeric status codes from `responses`, normalizing string keys like `"200"` to `200`. */
 type ResponseStatusKeys<T> = T extends { responses: infer R }
   ? keyof R extends infer K
@@ -132,10 +142,16 @@ type ResponseStatusKeys<T> = T extends { responses: infer R }
  * convenience methods for extracting validated request data.
  *
  * - `schemas` — raw Zod schemas for use with h3 validation utilities (e.g. `getValidatedRouterParams`)
+ *   - `schemas.params` — path parameters schema
+ *   - `schemas.query` — query parameters schema
+ *   - `schemas.headers` — request headers schema
+ *   - `schemas.cookies` — cookies schema
+ *   - `schemas.body` — request body schema
  * - `params()` — validates and returns route parameters
  * - `query()` — validates and returns query string parameters
  * - `body()` — validates and returns the JSON request body
  * - `reply()` — sets the response status, optional headers, and returns typed response data
+ * - `validReply()` — validates the response data and headers, then sets the response status and returns typed response data
  */
 export type RouterContext<
   T extends ZodOpenApiOperationObject = ZodOpenApiOperationObject,
@@ -144,12 +160,43 @@ export type RouterContext<
     params: ExtractParamsSchema<T>;
     query: ExtractQuerySchema<T>;
     headers: ExtractHeadersSchema<T>;
+    cookies: ExtractCookiesSchema<T>;
     body: ExtractBodySchema<T>;
   };
+  /**
+   * Validates and returns route parameters.
+   * Uses `getValidatedRouterParams()` from h3 when schema is present,
+   * otherwise uses `getRouterParams()`.
+   */
   params(event: H3Event): Promise<InferParams<T>>;
+  /**
+   * Validates and returns query string parameters.
+   * Uses `getValidatedQuery()` from h3 when schema is present,
+   * otherwise uses `getQuery()`.
+   */
   query(event: H3Event): Promise<InferQuery<T>>;
+  /**
+   * Validates and returns the request body.
+   * Uses `readValidatedBody()` from h3 when schema is present,
+   * otherwise uses `readBody()`.
+   * Reads request body and tries to parse using JSON.parse or URLSearchParams.
+   */
   body(event: H3Event): Promise<InferBody<T>>;
+  /**
+   * Sets the response status and optional headers, then returns the typed response data.
+   * Does not perform runtime validation on the response data.
+   */
   reply<S extends ResponseStatusKeys<T>>(
+    event: H3Event,
+    status: S,
+    data: InferResponse<T, S>,
+    headers?: InferResponseHeaders<T, S>,
+  ): InferResponse<T, S>;
+  /**
+   * Validates the response data, sets the response status and optional headers, then returns the typed response data.
+   * Throws an error if validation fails.
+   */
+  validReply<S extends ResponseStatusKeys<T>>(
     event: H3Event,
     status: S,
     data: InferResponse<T, S>,
@@ -164,6 +211,8 @@ function createContext<T extends ZodOpenApiOperationObject>(
   const querySchema = operation.requestParams?.query as ExtractQuerySchema<T>;
   const headersSchema = operation.requestParams
     ?.header as ExtractHeadersSchema<T>;
+  const cookiesSchema = operation.requestParams
+    ?.cookie as ExtractCookiesSchema<T>;
   const bodyRawSchema =
     operation.requestBody?.content?.["application/json"]?.schema;
   const bodySchema = (
@@ -175,6 +224,7 @@ function createContext<T extends ZodOpenApiOperationObject>(
       params: paramsSchema,
       query: querySchema,
       headers: headersSchema,
+      cookies: cookiesSchema,
       body: bodySchema,
     },
     params: (event) =>
@@ -198,7 +248,58 @@ function createContext<T extends ZodOpenApiOperationObject>(
       }
       return data;
     },
+    validReply: (event, status, data, headers) => {
+      const response = operation.responses?.[status];
+
+      const responseBodyRawSchema =
+        response?.content?.["application/json"]?.schema;
+      const responseBodySchema = isAnyZodType(responseBodyRawSchema)
+        ? responseBodyRawSchema
+        : undefined;
+
+      const responseHeadersRawSchema = response?.headers;
+      const responseHeadersSchema = isAnyZodType(responseHeadersRawSchema)
+        ? responseHeadersRawSchema
+        : undefined;
+
+      // parse body
+      if (responseBodySchema) {
+        const result = safeParse(responseBodySchema, data);
+        if (result.success) {
+          data = result.data;
+        } else throw createValidationError(result.error);
+      }
+
+      // parse headers
+      if (responseHeadersSchema) {
+        const result = safeParse(responseHeadersSchema, headers);
+        if (result.success) {
+          headers = result.data;
+        } else throw createValidationError(result.error);
+      }
+
+      event.res.status = status;
+      if (headers) {
+        for (const [key, value] of Object.entries(headers)) {
+          event.res.headers.set(key, String(value));
+        }
+      }
+      return data;
+    },
   };
+}
+
+function createValidationError(cause: ZodError) {
+  return new HTTPError({
+    cause,
+    status: 500,
+    message: "Response validation failed",
+    unhandled: true,
+    data: {
+      issues: cause.issues,
+      message: "Response validation failed",
+    },
+  });
 }
 
 // ---- HTTP Methods ----
@@ -218,7 +319,7 @@ type HttpMethod = (typeof HTTP_METHODS)[number];
  *
  * @example
  * ```ts
- * // Singleton via getbox DI
+ * // Singleton via getbox
  * const paths = box.get(OpenApiPaths);
  *
  * const getPost = paths.get("/posts/{id}", { ... });
@@ -477,7 +578,7 @@ export function jsonRequest<
  * jsonResponse(outputSchema, { description: "Success" })
  * jsonResponse(outputSchema, {
  *   description: "Success",
- *   headers: z.object({ "x-request-id": z.string() }).meta({}),
+ *   headers: z.object({ "x-request-id": z.string() }),
  * })
  * ```
  */
