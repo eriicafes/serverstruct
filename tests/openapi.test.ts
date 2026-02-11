@@ -103,10 +103,11 @@ describe("OpenApiPaths", () => {
 
   test("returns RouterContext with raw schemas", () => {
     const paths = new OpenApiPaths();
-    const bodySchema = z.object({ name: z.string() }).meta({});
-    const paramsSchema = z.object({ id: z.string() }).meta({});
-    const querySchema = z.object({ page: z.string() }).meta({});
-    const headersSchema = z.object({ "x-api-key": z.string() }).meta({});
+    const bodySchema = z.object({ name: z.string() });
+    const paramsSchema = z.object({ id: z.string() });
+    const querySchema = z.object({ page: z.string() });
+    const headersSchema = z.object({ "x-api-key": z.string() });
+    const cookiesSchema = z.object({ session: z.string() });
 
     const ctx = paths.post("/users/{id}", {
       operationId: "createUser",
@@ -114,6 +115,7 @@ describe("OpenApiPaths", () => {
         path: paramsSchema,
         query: querySchema,
         header: headersSchema,
+        cookie: cookiesSchema,
       },
       requestBody: jsonRequest(bodySchema),
       responses: {},
@@ -122,6 +124,7 @@ describe("OpenApiPaths", () => {
     expect(ctx.schemas.params).toBe(paramsSchema);
     expect(ctx.schemas.query).toBe(querySchema);
     expect(ctx.schemas.headers).toBe(headersSchema);
+    expect(ctx.schemas.cookies).toBe(cookiesSchema);
     expect(ctx.schemas.body).toBe(bodySchema);
   });
 
@@ -132,32 +135,13 @@ describe("OpenApiPaths", () => {
 
     expect(ctx.schemas.params).toBeUndefined();
     expect(ctx.schemas.query).toBeUndefined();
-    expect(ctx.schemas.body).toBeUndefined();
     expect(ctx.schemas.headers).toBeUndefined();
+    expect(ctx.schemas.cookies).toBeUndefined();
+    expect(ctx.schemas.body).toBeUndefined();
   });
 });
 
 describe("RouterContext", () => {
-  test("params() validates route parameters with schema", async () => {
-    const paths = new OpenApiPaths();
-    const paramsSchema = z.object({ id: z.string() }).meta({});
-
-    const ctx = paths.get("/users/{id}", {
-      operationId: "getUser",
-      requestParams: { path: paramsSchema },
-      responses: {},
-    });
-
-    const app = new H3();
-    app.get("/users/:id", async (event) => {
-      return await ctx.params(event);
-    });
-
-    const res = await app.request("/users/123");
-    expect(res.status).toBe(200);
-    expect(await res.json()).toStrictEqual({ id: "123" });
-  });
-
   test("params() returns raw params when no schema", async () => {
     const paths = new OpenApiPaths();
 
@@ -173,24 +157,28 @@ describe("RouterContext", () => {
     expect(await res.json()).toStrictEqual({ id: "456" });
   });
 
-  test("query() validates query parameters with schema", async () => {
+  test("params() validates route parameters with schema", async () => {
     const paths = new OpenApiPaths();
-    const querySchema = z.object({ page: z.string() }).meta({});
-
-    const ctx = paths.get("/users", {
-      operationId: "getUsers",
-      requestParams: { query: querySchema },
+    const paramsSchema = z.object({ id: z.coerce.number().int().positive() });
+    const ctx = paths.get("/users/{id}", {
+      operationId: "getUser",
+      requestParams: { path: paramsSchema },
       responses: {},
     });
 
     const app = new H3();
-    app.get("/users", async (event) => {
-      return await ctx.query(event);
+    app.get("/users/:id", async (event) => {
+      return await ctx.params(event);
     });
 
-    const res = await app.request("/users?page=2");
-    expect(res.status).toBe(200);
-    expect(await res.json()).toStrictEqual({ page: "2" });
+    // Valid params
+    const validRes = await app.request("/users/123");
+    expect(validRes.status).toBe(200);
+    expect(await validRes.json()).toStrictEqual({ id: 123 });
+
+    // Invalid params
+    const invalidRes = await app.request("/users/not-a-number");
+    expect(invalidRes.status).toBe(400);
   });
 
   test("query() returns raw query when no schema", async () => {
@@ -208,28 +196,28 @@ describe("RouterContext", () => {
     expect(await res.json()).toStrictEqual({ page: "3", limit: "10" });
   });
 
-  test("body() validates request body with schema", async () => {
+  test("query() validates query parameters with schema", async () => {
     const paths = new OpenApiPaths();
-    const bodySchema = z.object({ title: z.string() }).meta({});
-
-    const ctx = paths.post("/posts", {
-      operationId: "createPost",
-      requestBody: jsonRequest(bodySchema),
+    const querySchema = z.object({ page: z.coerce.number().int().positive() });
+    const ctx = paths.get("/users", {
+      operationId: "getUsers",
+      requestParams: { query: querySchema },
       responses: {},
     });
 
     const app = new H3();
-    app.post("/posts", async (event) => {
-      return await ctx.body(event);
+    app.get("/users", async (event) => {
+      return await ctx.query(event);
     });
 
-    const res = await app.request("/posts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "Hello" }),
-    });
-    expect(res.status).toBe(200);
-    expect(await res.json()).toStrictEqual({ title: "Hello" });
+    // Valid query
+    const validRes = await app.request("/users?page=2");
+    expect(validRes.status).toBe(200);
+    expect(await validRes.json()).toStrictEqual({ page: 2 });
+
+    // Invalid query
+    const invalidRes = await app.request("/users?page=invalid");
+    expect(invalidRes.status).toBe(400);
   });
 
   test("body() reads raw body when no schema", async () => {
@@ -251,9 +239,144 @@ describe("RouterContext", () => {
     expect(await res.json()).toStrictEqual({ title: "Raw" });
   });
 
+  test("body() validates request body with schema", async () => {
+    const paths = new OpenApiPaths();
+    const bodySchema = z.object({
+      title: z.string().min(3),
+      published: z.boolean(),
+    });
+    const ctx = paths.post("/posts", {
+      operationId: "createPost",
+      requestBody: jsonRequest(bodySchema),
+      responses: {},
+    });
+
+    const app = new H3();
+    app.post("/posts", async (event) => {
+      return await ctx.body(event);
+    });
+
+    // Valid body
+    const validRes = await app.request("/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Hello World", published: true }),
+    });
+    expect(validRes.status).toBe(200);
+    expect(await validRes.json()).toStrictEqual({
+      title: "Hello World",
+      published: true,
+    });
+
+    // Invalid body
+    const invalidRes = await app.request("/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "ab", published: "not-a-boolean" }),
+    });
+    expect(invalidRes.status).toBe(400);
+  });
+
+  test("body() handles url-encoded form without schema", async () => {
+    const paths = new OpenApiPaths();
+
+    const ctx = paths.post("/posts", op("createPost"));
+
+    const app = new H3();
+    app.post("/posts", async (event) => {
+      return await ctx.body(event);
+    });
+
+    const params = new URLSearchParams();
+    params.append("title", "Test Post");
+    params.append("author", "Bob");
+
+    const res = await app.request("/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+    expect(res.status).toBe(200);
+    const result = await res.json();
+    expect(result).toStrictEqual({ title: "Test Post", author: "Bob" });
+  });
+
+  test("body() handles url-encoded form with JSON schema", async () => {
+    const paths = new OpenApiPaths();
+    const bodySchema = z.object({ title: z.string(), author: z.string() });
+    const ctx = paths.post("/posts", {
+      operationId: "createPost",
+      requestBody: jsonRequest(bodySchema),
+      responses: {},
+    });
+
+    const app = new H3();
+    app.post("/posts", async (event) => {
+      return await ctx.body(event);
+    });
+
+    const params = new URLSearchParams();
+    params.append("title", "Test Post");
+    params.append("author", "Alice");
+
+    const res = await app.request("/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+    expect(res.status).toBe(200);
+    const result = await res.json();
+    expect(result).toStrictEqual({ title: "Test Post", author: "Alice" });
+  });
+
+  test("body() rejects multipart form-data without schema", async () => {
+    const paths = new OpenApiPaths();
+
+    const ctx = paths.post("/posts", op("createPost"));
+
+    const app = new H3();
+    app.post("/posts", async (event) => {
+      return await ctx.body(event);
+    });
+
+    const formData = new FormData();
+    formData.append("title", "Test Post");
+
+    const res = await app.request("/posts", {
+      method: "POST",
+      body: formData,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("body() rejects multipart form-data with JSON schema", async () => {
+    const paths = new OpenApiPaths();
+    const bodySchema = z.object({ title: z.string() });
+
+    const ctx = paths.post("/posts", {
+      operationId: "createPost",
+      requestBody: jsonRequest(bodySchema),
+      responses: {},
+    });
+
+    const app = new H3();
+    app.post("/posts", async (event) => {
+      return await ctx.body(event);
+    });
+
+    const formData = new FormData();
+    formData.append("title", "Test Post");
+
+    const res = await app.request("/posts", {
+      method: "POST",
+      body: formData,
+    });
+    expect(res.status).toBe(400);
+  });
+
   test("reply() sets response status and returns data", async () => {
     const paths = new OpenApiPaths();
-    const responseSchema = z.object({ id: z.string() }).meta({});
+    const responseSchema = z.object({ id: z.string() });
 
     const ctx = paths.post("/posts", {
       operationId: "createPost",
@@ -274,8 +397,8 @@ describe("RouterContext", () => {
 
   test("reply() sets response headers", async () => {
     const paths = new OpenApiPaths();
-    const responseSchema = z.object({ id: z.string() }).meta({});
-    const headersSchema = z.object({ "x-request-id": z.string() }).meta({});
+    const responseSchema = z.object({ id: z.string() });
+    const headersSchema = z.object({ "x-request-id": z.string() });
 
     const ctx = paths.get("/posts/{id}", {
       operationId: "getPost",
@@ -296,6 +419,107 @@ describe("RouterContext", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("x-request-id")).toBe("abc-123");
     expect(await res.json()).toStrictEqual({ id: "1" });
+  });
+
+  test("validReply() works without schemas", async () => {
+    const paths = new OpenApiPaths();
+
+    const ctx = paths.post("/posts", {
+      operationId: "createPost",
+      responses: {
+        201: { description: "Created" },
+      },
+    });
+
+    const app = new H3();
+    app.post("/posts", async (event) => {
+      return ctx.validReply(event, 201, { id: "any-value" });
+    });
+
+    const res = await app.request("/posts", { method: "POST" });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toStrictEqual({ id: "any-value" });
+  });
+
+  test("validReply() validates response data", async () => {
+    const paths = new OpenApiPaths();
+    const responseSchema = z.object({
+      score: z.number().int().min(0).max(100),
+    });
+
+    const ctx = paths.post("/scores", {
+      operationId: "createScore",
+      responses: {
+        201: jsonResponse(responseSchema, { description: "Created" }),
+      },
+    });
+
+    const app = new H3();
+    app.post("/scores", async (event) => {
+      return ctx.validReply(event, 201, { score: 85 });
+    });
+
+    // Valid response
+    const validRes = await app.request("/scores", { method: "POST" });
+    expect(validRes.status).toBe(201);
+    expect(await validRes.json()).toStrictEqual({ score: 85 });
+
+    // Invalid response
+    const invalidApp = new H3();
+    invalidApp.post("/scores", async (event) => {
+      return ctx.validReply(event, 201, { score: 150 });
+    });
+
+    const invalidRes = await invalidApp.request("/scores", {
+      method: "POST",
+    });
+    expect(invalidRes.status).toBe(500);
+  });
+
+  test("validReply() validates response headers", { skip: true }, async () => {
+    const paths = new OpenApiPaths();
+    const responseSchema = z.object({ id: z.string() });
+    const headersSchema = z.object({
+      "x-count": z.coerce.number().int().min(1),
+    });
+
+    const ctx = paths.get("/posts/{id}", {
+      operationId: "getPost",
+      responses: {
+        200: jsonResponse(responseSchema, {
+          description: "Success",
+          headers: headersSchema,
+        }),
+      },
+    });
+
+    const app = new H3();
+    app.get("/posts/:id", async (event) => {
+      return ctx.validReply(event, 200, { id: "1" }, { "x-count": 5 });
+    });
+
+    // Valid headers
+    const validRes = await app.request("/posts/1");
+    expect(validRes.status).toBe(200);
+    expect(validRes.headers.get("x-count")).toBe("5");
+
+    // Invalid headers
+    const invalidApp = new H3();
+    invalidApp.get("/posts/:id", async (event) => {
+      return ctx.validReply(event, 200, { id: "1" }, { "x-count": -1 });
+    });
+
+    const invalidRes = await invalidApp.request("/posts/1");
+    expect(invalidRes.status).toBe(500);
+
+    // No headers
+    const invalidApp2 = new H3();
+    invalidApp2.get("/posts/:id", async (event) => {
+      return ctx.validReply(event, 200, { id: "1" });
+    });
+
+    const invalidRes2 = await invalidApp2.request("/posts/1");
+    expect(invalidRes2.status).toBe(500);
   });
 });
 
@@ -321,7 +545,7 @@ describe("OpenApiRouter", () => {
     const app = new H3();
     const paths = new OpenApiPaths();
     const router = createRouter(app, paths);
-    const bodySchema = z.object({ title: z.string() }).meta({});
+    const bodySchema = z.object({ title: z.string() });
 
     router.post(
       "/posts",
@@ -329,7 +553,7 @@ describe("OpenApiRouter", () => {
         operationId: "createPost",
         requestBody: jsonRequest(bodySchema),
         responses: {
-          201: jsonResponse(z.object({ id: z.string() }).meta({}), {
+          201: jsonResponse(z.object({ id: z.string() }), {
             description: "Created",
           }),
         },
@@ -471,7 +695,7 @@ describe("OpenApiRouter", () => {
 
 describe("jsonRequest", () => {
   test("builds requestBody with application/json content", () => {
-    const schema = z.object({ name: z.string() }).meta({});
+    const schema = z.object({ name: z.string() });
     const result = jsonRequest(schema);
 
     expect(result).toStrictEqual({
@@ -483,7 +707,7 @@ describe("jsonRequest", () => {
   });
 
   test("passes additional options", () => {
-    const schema = z.object({ name: z.string() }).meta({});
+    const schema = z.object({ name: z.string() });
     const result = jsonRequest(schema, {
       description: "Create a user",
       content: { example: { name: "Alice" } },
@@ -499,7 +723,7 @@ describe("jsonRequest", () => {
 
 describe("jsonResponse", () => {
   test("builds response with application/json content", () => {
-    const schema = z.object({ id: z.string() }).meta({});
+    const schema = z.object({ id: z.string() });
     const result = jsonResponse(schema, { description: "Success" });
 
     expect(result.description).toBe("Success");
@@ -507,8 +731,8 @@ describe("jsonResponse", () => {
   });
 
   test("passes headers through", () => {
-    const schema = z.object({ id: z.string() }).meta({});
-    const headers = z.object({ "x-request-id": z.string() }).meta({});
+    const schema = z.object({ id: z.string() });
+    const headers = z.object({ "x-request-id": z.string() });
     const result = jsonResponse(schema, {
       description: "Success",
       headers,
@@ -518,7 +742,7 @@ describe("jsonResponse", () => {
   });
 
   test("passes additional options", () => {
-    const schema = z.object({ id: z.string() }).meta({});
+    const schema = z.object({ id: z.string() });
     const result = jsonResponse(schema, {
       description: "Success",
       content: { example: { id: "1" } },

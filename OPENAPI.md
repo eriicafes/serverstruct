@@ -92,6 +92,9 @@ const app = application((app, box) => {
       event,
       getUser.schemas.params,
     );
+    const query = await getValidatedQuery(event, getUser.schemas.query);
+    const body = await readValidatedBody(event, getUser.schemas.body);
+    // getUser.schemas.headers and getUser.schemas.cookies are also available
     return getUser.reply(event, 200, { id: params.id, name: "Alice" });
   });
 });
