@@ -36,6 +36,16 @@
         "types": "./dist/openapi.scalar.d.cts",
         "default": "./dist/openapi.scalar.cjs"
       }
+    },
+    "./otel": {
+      "import": {
+        "types": "./dist/otel.d.mts",
+        "default": "./dist/otel.mjs"
+      },
+      "require": {
+        "types": "./dist/otel.d.cts",
+        "default": "./dist/otel.cjs"
+      }
     }
   },
   "scripts": {
@@ -70,6 +80,8 @@
     "vitest": "^4.0.16"
   },
   "peerDependencies": {
+    "@opentelemetry/api": ">=1.9.0 <2.0.0",
+    "@opentelemetry/semantic-conventions": ">=1.39.0 <2.0.0",
     "@scalar/core": ">=0.3.37",
     "getbox": ">=1.0.0 <2.0.0",
     "h3": ">=2.0.1-rc.6 <3.0.0",
