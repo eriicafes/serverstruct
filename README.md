@@ -10,6 +10,10 @@ Serverstruct provides simple helpers for building modular h3 applications with d
 
 Define OpenAPI operations alongside your route handlers using Zod schemas. Request parameters and body are validated at runtime, and responses are fully typed. Uses [zod-openapi](https://github.com/samchungy/zod-openapi).
 
+### [OpenTelemetry](./OTEL.md)
+
+Middleware for distributed tracing with OpenTelemetry. Automatically instruments HTTP requests with spans, captures semantic convention attributes, supports custom tracers and propagators.
+
 ## Installation
 
 ```sh

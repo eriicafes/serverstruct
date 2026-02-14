@@ -297,7 +297,7 @@ describe("Middleware", () => {
 
     // Both should get the same object instance
     expect(middlewareAction.mock.lastCall?.[0]).toBe(
-      appAction.mock.lastCall?.[0]
+      appAction.mock.lastCall?.[0],
     );
   });
 
