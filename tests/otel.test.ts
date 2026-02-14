@@ -296,6 +296,61 @@ describe("traceMiddleware", () => {
     expect(spans[0].events[0].name).toBe("exception");
   });
 
+  test("does not record exception when error is caught in handler without throwing", async () => {
+    const app = new H3();
+
+    app.use(traceMiddleware());
+    app.get("/throw", (event) => {
+      try {
+        throw new Error("Caught error");
+      } catch {
+        // Error caught and handled without re-throwing
+        event.res.status = 503;
+        return { error: "Service unavailable" };
+      }
+    });
+
+    const res = await app.request("/throw");
+    expect(res.status).toBe(503);
+
+    const spans = await getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    // Status code indicates error
+    expect(spans[0].status.code).toBe(SpanStatusCode.ERROR);
+    // No exception recorded because error was caught before reaching middleware
+    expect(spans[0].events).toHaveLength(0);
+  });
+
+  test("records exception when trace middleware is placed after error handler", async () => {
+    const app = new H3();
+
+    // Error handler first, then trace middleware
+    app.use(async (event, next) => {
+      try {
+        return await next();
+      } catch (err) {
+        event.res.status = 503;
+        return { error: "Service unavailable" };
+      }
+    });
+    app.use(traceMiddleware());
+    app.get("/throw", () => {
+      throw new Error("Database error");
+    });
+
+    const res = await app.request("/throw");
+    expect(res.status).toBe(503);
+
+    const spans = await getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    // Status code indicates error
+    expect(spans[0].status.code).toBe(SpanStatusCode.ERROR);
+    // Trace middleware catches error first, records exception, then rethrows
+    expect(spans[0].status.message).toBe("Database error");
+    expect(spans[0].events).toHaveLength(1);
+    expect(spans[0].events[0].name).toBe("exception");
+  });
+
   test("uses custom propagator", async () => {
     // Create a custom propagator that modifies headers
     let extractedValue = "";
