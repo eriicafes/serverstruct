@@ -200,6 +200,12 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
     try {
       const response = await context.with(spanCtx, async () => {
         const result = await next();
+
+        // inject trace to response headers before creating Response (headers are mutable here)
+        if (injectResponse) {
+          propagator.inject(spanCtx, event.res.headers, setter);
+        }
+
         return toResponse(result, event);
       });
 
@@ -220,11 +226,6 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
             ]);
           }
         }
-      }
-
-      // inject trace to response if enabled
-      if (injectResponse) {
-        propagator.inject(spanCtx, response.headers, setter);
       }
 
       return response;
