@@ -6,7 +6,7 @@
 
 - 0031700: Add OpenAPI Integration
 - 0031700: Add OpenTelemetry Integration
-- 0031700: Rexport `serve` function H3
+- 0031700: Re-export `serve` function H3
 
 ## 1.1.0
 
@@ -35,10 +35,6 @@
 ### Minor Changes
 
 - bffca37: Rename createRoute to createModule
-
-### Patch Changes
-
-- 7322c66: Update dependencies
 
 ## 0.2.0
 
