@@ -1,5 +1,13 @@
 # serverstruct
 
+## 1.2.0
+
+### Minor Changes
+
+- 0031700: Add OpenAPI Integration
+- 0031700: Add OpenTelemetry Integration
+- 0031700: Rexport `serve` function H3
+
 ## 1.1.0
 
 ### Minor Changes
