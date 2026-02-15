@@ -465,7 +465,7 @@ describe("RouterContext", () => {
     expect(await validRes.json()).toStrictEqual({ score: 85 });
 
     // Invalid response
-    const invalidApp = new H3();
+    const invalidApp = new H3({ silent: true });
     invalidApp.post("/scores", async (event) => {
       return ctx.validReply(event, 201, { score: 150 });
     });
@@ -476,7 +476,7 @@ describe("RouterContext", () => {
     expect(invalidRes.status).toBe(500);
   });
 
-  test("validReply() validates response headers", { skip: true }, async () => {
+  test("validReply() validates response headers", async () => {
     const paths = new OpenApiPaths();
     const responseSchema = z.object({ id: z.string() });
     const headersSchema = z.object({
@@ -504,7 +504,7 @@ describe("RouterContext", () => {
     expect(validRes.headers.get("x-count")).toBe("5");
 
     // Invalid headers
-    const invalidApp = new H3();
+    const invalidApp = new H3({ silent: true });
     invalidApp.get("/posts/:id", async (event) => {
       return ctx.validReply(event, 200, { id: "1" }, { "x-count": -1 });
     });
@@ -513,7 +513,7 @@ describe("RouterContext", () => {
     expect(invalidRes.status).toBe(500);
 
     // No headers
-    const invalidApp2 = new H3();
+    const invalidApp2 = new H3({ silent: true });
     invalidApp2.get("/posts/:id", async (event) => {
       return ctx.validReply(event, 200, { id: "1" });
     });

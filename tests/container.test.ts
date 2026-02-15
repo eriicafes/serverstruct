@@ -32,13 +32,13 @@ describe("Container", () => {
       app.mount("", box.new(childController));
     }, box);
 
-    await app.app.request("/");
+    await app.request("/");
 
     expect(routeAction.mock.lastCall?.[0]).not.toBeUndefined();
     expect(childRouteAction.mock.lastCall?.[0]).not.toBeUndefined();
     // Both should reference the same Counter instance
     expect(routeAction.mock.lastCall?.[0]).toBe(
-      childRouteAction.mock.lastCall?.[0]
+      childRouteAction.mock.lastCall?.[0],
     );
     // Verify the counter was incremented
     expect(childRouteAction.mock.lastCall?.[0].count).toBe(1);
@@ -60,7 +60,7 @@ describe("Container", () => {
       app.mount("", box.new(testController));
     });
 
-    await app.app.request("/");
+    await app.request("/");
 
     const { counter1, counter2 } = getActions.mock.lastCall?.[0];
     expect(counter1).toBe(counter2);

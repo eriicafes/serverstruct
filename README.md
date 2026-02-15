@@ -2,17 +2,12 @@
 
 ⚡️ Typesafe and modular servers with [H3](https://github.com/unjs/h3).
 
-Serverstruct provides simple helpers for building modular h3 applications with dependency injection using [getbox](https://github.com/eriicafes/getbox).
+Serverstruct provides simple helpers for building modular H3 applications with dependency injection using [getbox](https://github.com/eriicafes/getbox).
 
 ## Integrations
 
-### [OpenAPI](./OPENAPI.md)
-
-Define OpenAPI operations alongside your route handlers using Zod schemas. Request parameters and body are validated at runtime, and responses are fully typed. Uses [zod-openapi](https://github.com/samchungy/zod-openapi).
-
-### [OpenTelemetry](./OTEL.md)
-
-Middleware for distributed tracing with OpenTelemetry. Automatically instruments HTTP requests with spans, captures semantic convention attributes, supports custom tracers and propagators.
+- [OpenAPI](./OPENAPI.md) - Typesafe OpenAPI operations with Zod schema validation.
+- [OpenTelemetry](./OTEL.md) - Distributed tracing middleware for HTTP requests.
 
 ## Installation
 
@@ -23,170 +18,151 @@ npm i serverstruct h3 getbox
 ## Quick Start
 
 ```typescript
-import { application } from "serverstruct";
+import { application, serve } from "serverstruct";
 
 const app = application((app) => {
   app.get("/", () => "Hello world!");
 });
 
-app.serve({ port: 3000 });
+serve(app, { port: 3000 });
 ```
 
-## Apps
+## Application
 
-Create modular h3 apps and mount them together:
+`application()` creates an H3 instance and a Box instance for dependency injection.
+You can pass a Box instance to share dependencies across applications (see [Box Instance](#box-instance)).
+
+You can mount other apps using `app.mount()`:
 
 ```typescript
-import { application } from "serverstruct";
+import { H3 } from "h3";
+import { application, serve } from "serverstruct";
 
-// Create a users module
-const { app: usersApp } = application((app) => {
-  const users: User[] = [];
-
-  app.get("/", () => users);
-  app.post("/", async (event) => {
-    const body = await readValidatedBody(event, validateUser);
-    users.push(body);
-    return body;
-  });
+// Create a sub application
+const usersApp = application((app) => {
+  app.get("/", () => ["Alice", "Bob"]);
 });
 
-// Compose in main app
+// Create a regular H3 instance
+const docsApp = new H3().get("/", () => "API Documentation");
+
+// Mount in main app
 const app = application((app) => {
-  app.get("/ping", () => "pong");
+  app.get("/", () => "Hello world!");
   app.mount("/users", usersApp);
+  app.mount("/docs", docsApp);
 });
 
-app.serve({ port: 3000 });
+serve(app, { port: 3000 });
 ```
 
-You can also create and return a new H3 instance to customize H3 options:
+When an app is mounted, its middlewares and routes are copied to the main app in place with middlewares scoped to the base path.
+
+Both `application()` and `controller()` can return a custom H3 instance:
 
 ```typescript
 import { H3 } from "h3";
 
-const app = application(() => {
-  const customApp = new H3({
-    onError: (error) => {
-      console.error(error);
+const customApp = application(() => {
+  const app = new H3({
+    onError: (error, event) => {
+      console.error("Error:", error);
     },
   });
-  customApp.get("/", () => "Hello from custom app!");
-  return customApp;
+  app.get("/", () => "Hello from custom app!");
+  return app;
 });
-```
-
-### Accessing the Box Instance
-
-The `application()` function creates a new Box instance by default and returns it along with `app` and `serve`. You can access the box instance to retrieve dependencies:
-
-```typescript
-import { constant } from "getbox";
-
-const Port = constant(5000);
-
-const { box, serve } = application((app, box) => {
-  app.get("/", () => "Hello world!");
-});
-
-const port = box.get(Port);
-serve({ port });
 ```
 
 ## Controllers
 
-Use `controller()` to create h3 app constructors:
+Controllers are apps that are initialized with a parent Box instance, sharing the same dependency container. Use `controller()` to create H3 app constructors:
 
 ```typescript
 import { application, controller } from "serverstruct";
 
-// Define a controller
-const usersController = controller((app) => {
-  const users: User[] = [];
+class UserStore {
+  public users: User[] = [];
 
-  app.get("/", () => users);
+  add(user: User) {
+    this.users.push(user);
+    return user;
+  }
+}
+
+// Create a controller
+const usersController = controller((app, box) => {
+  const store = box.get(UserStore);
+
+  app.get("/", () => store.users);
   app.post("/", async (event) => {
-    const body = await readValidatedBody(event, validateUser);
-    users.push(body);
-    return body;
+    const body = await readBody(event);
+    return store.add(body);
   });
 });
 
 // Use it in your main app
 const app = application((app, box) => {
-  app.get("/ping", () => "pong");
+  const store = box.get(UserStore);
+
+  app.get("/count", () => ({
+    users: store.users.length,
+  }));
   app.mount("/users", box.new(usersController));
 });
 
-app.serve({ port: 3000 });
+serve(app, { port: 3000 });
 ```
 
 ## Handlers
 
-Use `handler()` to create h3 handler constructors:
+Use `handler()` to create H3 handler constructors:
 
 ```typescript
 import { application, handler } from "serverstruct";
 
-class UserService {
-  getUser(id: string) {
-    return { id, name: "Alice" };
-  }
-}
-
 // Define a handler
 const getUserHandler = handler((event, box) => {
-  const userService = box.get(UserService);
+  const store = box.get(UserStore);
+
   const id = event.context.params?.id;
-  return userService.getUser(id);
+  return store.users.find((user) => user.id === id);
 });
 
 // Use it in your app
 const app = application((app, box) => {
-  app.get("/users/:id", box.get(getUserHandler));
+  app.get("/users/:id", box.new(getUserHandler));
 });
 ```
 
 ### Event Handlers
 
-Use `eventHandler()` to create h3 handlers with additional options like metadata and middleware:
+Use `eventHandler()` to create H3 handler constructors with additional options like meta and middleware:
 
 ```typescript
 import { application, eventHandler } from "serverstruct";
 
-class UserService {
-  getUser(id: string) {
-    return { id, name: "Alice" };
-  }
-}
-
-// Define an event handler with middleware and metadata
+// Define an event handler with additional options
 const getUserHandler = eventHandler((box) => ({
   handler(event) {
-    const userService = box.get(UserService);
+    const store = box.get(UserStore);
+
     const id = event.context.params?.id;
-    return userService.getUser(id);
+    return store.users.find((user) => user.id === id);
   },
   meta: { auth: true },
-  middleware: [
-    (event) => {
-      const token = event.headers.get("authorization");
-      if (!token || token !== "secret-token") {
-        throw new Error("Unauthorized");
-      }
-    },
-  ],
+  middleware: [],
 }));
 
 // Use it in your app
 const app = application((app, box) => {
-  app.get("/users/:id", box.get(getUserHandler));
+  app.get("/users/:id", box.new(getUserHandler));
 });
 ```
 
 ## Middleware
 
-Use `middleware()` to create h3 middleware constructors:
+Use `middleware()` to create H3 middleware constructors:
 
 ```typescript
 import { application, middleware } from "serverstruct";
@@ -210,9 +186,109 @@ const app = application((app, box) => {
 });
 ```
 
+All middlewares defined with `app.use()` are global and execute before the matched handler in the exact order they are defined.
+
+## Error Handling
+
+Error handlers are middleware that catch errors after calling `await next()`.
+
+The last error handler defined executes before earlier ones. The error bubbles through each error handler until a response is returned or the default error response is sent.
+
+Use H3's `onError` helper to define error handlers:
+
+```typescript
+import { onError } from "h3";
+import { application } from "serverstruct";
+
+const app = application((app) => {
+  app.use(
+    onError((error) => {
+      console.log("Error:", error);
+    }),
+  );
+  app.get("/", () => {
+    throw new Error("Oops");
+  });
+});
+```
+
+When the error handler needs access to the Box, wrap it with `middleware()`:
+
+```typescript
+import { onError } from "h3";
+import { application, middleware } from "serverstruct";
+
+const errorHandler = middleware((event, next, box) => {
+  return onError((error) => {
+    console.log("Error:", error);
+  });
+});
+
+const app = application((app, box) => {
+  app.use(box.get(errorHandler));
+  app.get("/", () => {
+    throw new Error("Oops");
+  });
+});
+```
+
+### Not Found Routes
+
+To catch not found routes, define a catch-all handler and return the desired error:
+
+```typescript
+import { H3Error } from "h3";
+
+const app = application((app) => {
+  app.get("/", () => "Hello world!");
+  app.all("**", () => new H3Error({ status: 404, message: "Not found" }));
+});
+```
+
+Mounted apps can define their own not found handlers:
+
+```typescript
+const usersApp = application((app) => {
+  app.get("/", () => ["Alice", "Bob"]);
+  app.all(
+    "**",
+    () => new H3Error({ status: 404, message: "User route not found" }),
+  );
+});
+
+const app = application((app) => {
+  app.mount("/users", usersApp);
+  app.all("**", () => new H3Error({ status: 404, message: "Not found" }));
+});
+```
+
+## Box Instance
+
+By default, `application()` creates a new Box instance. Pass a Box instance to reuse it:
+
+```typescript
+import { Box } from "getbox";
+import { application, serve } from "serverstruct";
+
+const box = new Box();
+
+const usersApp = application((app, box) => {
+  const store = box.get(UserStore);
+  app.get("/", () => store.users);
+}, box);
+
+const app = application((app, box) => {
+  const store = box.get(UserStore);
+  app.get("/count", () => store.users.length);
+  app.mount("/users", usersApp);
+}, box);
+
+serve(app, { port: 3000 });
+```
+
 ## Context
 
-The `context()` function creates a request-scoped, type-safe store for per-request values. Each request gets its own isolated context that is automatically cleaned up when the request completes.
+`context()` creates a request-scoped, type-safe store for per-request values.
 
 ```typescript
 import { application, context } from "serverstruct";
@@ -234,7 +310,12 @@ const app = application((app) => {
 
   // Access context in handlers
   app.get("/profile", (event) => {
+    // Optional access - returns undefined if not set
+    const maybeUser = userContext.lookup(event);
+
+    // Safe access - throws if not set
     const user = userContext.get(event);
+
     return { profile: user };
   });
 });
@@ -245,40 +326,3 @@ const app = application((app) => {
 - `set(event, value)` - Store a value for the current request
 - `get(event)` - Retrieve the value for the current request (throws if not found)
 - `lookup(event)` - Retrieve the value or `undefined` if not found
-
-```typescript
-const requestIdContext = context<string>();
-
-const app = application((app) => {
-  app.use((event) => {
-    requestIdContext.set(event, crypto.randomUUID());
-  });
-
-  app.get("/", (event) => {
-    // Safe access - throws if not set
-    const id = requestIdContext.get(event);
-
-    // Optional access - returns undefined if not set
-    const maybeId = requestIdContext.lookup(event);
-
-    return { requestId: id };
-  });
-});
-```
-
-## Custom Box Instance
-
-You can also pass your own Box instance to share dependencies across multiple applications or mock dependencies:
-
-```typescript
-import { Box } from "getbox";
-
-const box = new Box();
-
-// Mock a dependency
-Box.mock(box, Database, new Database());
-
-const app = application((app, box) => {
-  app.mount("/users", box.new(usersController));
-}, box);
-```

@@ -10,62 +10,58 @@ import {
   serve,
 } from "h3";
 
-type MaybePromise<T = unknown> = T | Promise<T>;
+export { serve } from "h3";
 
 export type Server = ReturnType<typeof serve>;
 export type ServeOptions = Parameters<typeof serve>[1];
 
+type MaybePromise<T = unknown> = T | Promise<T>;
+
 /**
- * Creates an h3 application.
+ * Creates an H3 application.
  *
  * @param setup - Function that configures the app. Receives a fresh H3 instance
  *                and Box instance. Can add routes to the provided app, or create
  *                and return a new H3 instance.
  * @param box - Optional Box instance. If not provided, creates a new one.
- * @returns Object with `app` (H3 instance), `box` (Box instance), and `serve` method.
+ * @returns H3 instance.
  *
  * @example
  * ```typescript
+ * import { application, serve } from "serverstruct";
+ *
  * const app = application((app) => {
  *   app.get("/", () => "Hello world!");
  * });
  *
- * await app.serve({ port: 3000 });
+ * serve(app, { port: 3000 });
  * ```
  *
  * @example With dependency injection
  * ```typescript
+ * import { application, serve } from "serverstruct";
+ *
  * const app = application((app, box) => {
  *   app.get("/ping", () => "pong");
  *   app.mount("/users", box.new(usersController));
  * });
  *
- * await app.serve({ port: 3000 });
+ * serve(app, { port: 3000 });
  * ```
  */
 export function application(
   setup: (app: H3, box: Box) => H3 | void,
-  box = new Box()
-): {
-  app: H3;
-  box: Box;
-  serve: (options?: ServeOptions) => Server;
-} {
+  box = new Box(),
+): H3 {
   const defaultApp = new H3();
-  const app = setup(defaultApp, box) || defaultApp;
-
-  return {
-    app,
-    box,
-    serve: (options?: ServeOptions) => serve(app, options),
-  };
+  return setup(defaultApp, box) || defaultApp;
 }
 
 /**
- * Creates an h3 app constructor.
+ * Creates an H3 app constructor.
  *
  * @param setup - Function that configures the app.
- * @returns A Constructor that produces an h3 app.
+ * @returns A Constructor that produces an H3 app.
  *
  * @example
  * ```typescript
@@ -88,16 +84,16 @@ export function application(
  * ```
  */
 export function controller(
-  setup: (app: H3, box: Box) => H3 | void
+  setup: (app: H3, box: Box) => H3 | void,
 ): Constructor<H3> {
-  return factory((box) => application(setup, box).app);
+  return factory((box) => application(setup, box));
 }
 
 /**
  * Creates a handler constructor.
  *
  * @param setup - Handler function that receives the event and Box instance.
- * @returns A Constructor that produces an h3 handler.
+ * @returns A Constructor that produces an H3 handler.
  *
  * @example
  * ```typescript
@@ -122,10 +118,10 @@ export function controller(
  */
 export function handler<
   Res = unknown,
-  Req extends EventHandlerRequest = EventHandlerRequest
+  Req extends EventHandlerRequest = EventHandlerRequest,
 >(setup: (event: H3Event<Req>, box: Box) => Res) {
   return factory((box) =>
-    defineHandler<Req, Res>((event) => setup(event, box))
+    defineHandler<Req, Res>((event) => setup(event, box)),
   );
 }
 
@@ -133,7 +129,7 @@ export function handler<
  * Creates an event handler constructor from a setup function.
  *
  * @param setup - Function that receives Box instance and returns an event handler object.
- * @returns A Constructor that produces an h3 event handler.
+ * @returns A Constructor that produces an H3 event handler.
  *
  * @example
  * ```typescript
@@ -161,7 +157,7 @@ export function handler<
  */
 export function eventHandler<
   Res = unknown,
-  Req extends EventHandlerRequest = EventHandlerRequest
+  Req extends EventHandlerRequest = EventHandlerRequest,
 >(setup: (box: Box) => EventHandlerObject<Req, Res>) {
   return factory((box) => defineHandler<Req, Res>(setup(box)));
 }
@@ -170,7 +166,7 @@ export function eventHandler<
  * Creates a middleware constructor.
  *
  * @param setup - Middleware function that receives the event, next function, and Box instance.
- * @returns A Constructor that produces an h3 middleware.
+ * @returns A Constructor that produces an H3 middleware.
  *
  * @example
  * ```typescript
@@ -200,11 +196,11 @@ export function middleware(
   setup: (
     event: H3Event,
     next: () => MaybePromise<unknown | undefined>,
-    box: Box
-  ) => MaybePromise<unknown | undefined>
+    box: Box,
+  ) => MaybePromise<unknown | undefined>,
 ): Constructor<Middleware> {
   return factory((box) =>
-    defineMiddleware((event, next) => setup(event, next, box))
+    defineMiddleware((event, next) => setup(event, next, box)),
   );
 }
 

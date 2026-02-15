@@ -23,7 +23,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/user");
+    const res = await app.request("/user");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ id: "123", name: "Alice" });
   });
@@ -45,7 +45,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({
       error: true,
@@ -68,7 +68,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ value: "test-value" });
   });
@@ -83,7 +83,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ value: null });
   });
@@ -105,10 +105,10 @@ describe("Context", () => {
       });
     });
 
-    const res1 = await app.app.request("/");
+    const res1 = await app.request("/");
     expect(await res1.json()).toStrictEqual({ user: "user-1" });
 
-    const res2 = await app.app.request("/");
+    const res2 = await app.request("/");
     expect(await res2.json()).toStrictEqual({ user: "user-2" });
   });
 
@@ -132,7 +132,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ count: 100 });
   });
@@ -162,7 +162,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/user");
+    const res = await app.request("/user");
     expect(res.status).toBe(200);
     const user = await res.json();
     expect(user).toEqual({
@@ -191,7 +191,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({
       user: { name: "Alice" },
@@ -215,7 +215,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ value: null, lookupValue: null });
   });
@@ -239,7 +239,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({
       value: "fallback",
@@ -268,7 +268,7 @@ describe("Context", () => {
       });
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ requestId: "req-123-processed" });
   });
@@ -289,7 +289,7 @@ describe("Context", () => {
 
     // Create 100 concurrent requests
     const requests = Array.from({ length: 100 }, (_, i) =>
-      app.app.request(`/${i}`)
+      app.request(`/${i}`),
     );
 
     const responses = await Promise.all(requests);

@@ -279,7 +279,7 @@ describe("traceMiddleware", () => {
   });
 
   test("records exception and sets error status on thrown error", async () => {
-    const app = new H3();
+    const app = new H3({ silent: true });
     app.use(traceMiddleware());
     app.get("/throw", () => {
       throw new Error("Something went wrong");

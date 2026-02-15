@@ -141,7 +141,7 @@ type ResponseStatusKeys<T> = T extends { responses: infer R }
  * Provides access to raw Zod schemas for manual validation and
  * convenience methods for extracting validated request data.
  *
- * - `schemas` — raw Zod schemas for use with h3 validation utilities (e.g. `getValidatedRouterParams`)
+ * - `schemas` — raw Zod schemas for use with H3 validation utilities (e.g. `getValidatedRouterParams`)
  *   - `schemas.params` — path parameters schema
  *   - `schemas.query` — query parameters schema
  *   - `schemas.headers` — request headers schema
@@ -165,19 +165,19 @@ export type RouterContext<
   };
   /**
    * Validates and returns route parameters.
-   * Uses `getValidatedRouterParams()` from h3 when schema is present,
+   * Uses `getValidatedRouterParams()` from H3 when schema is present,
    * otherwise uses `getRouterParams()`.
    */
   params(event: H3Event): Promise<InferParams<T>>;
   /**
    * Validates and returns query string parameters.
-   * Uses `getValidatedQuery()` from h3 when schema is present,
+   * Uses `getValidatedQuery()` from H3 when schema is present,
    * otherwise uses `getQuery()`.
    */
   query(event: H3Event): Promise<InferQuery<T>>;
   /**
    * Validates and returns the request body.
-   * Uses `readValidatedBody()` from h3 when schema is present,
+   * Uses `readValidatedBody()` from H3 when schema is present,
    * otherwise uses `readBody()`.
    * Reads request body and tries to parse using JSON.parse or URLSearchParams.
    */
