@@ -13,7 +13,7 @@ npm i zod zod-openapi
 ## Quick Start
 
 ```typescript
-import { application } from "serverstruct";
+import { application, serve } from "serverstruct";
 import { z } from "zod";
 import {
   createDocument,
@@ -59,7 +59,7 @@ const app = application((app, box) => {
   );
 });
 
-app.serve({ port: 3000 });
+serve(app, { port: 3000 });
 ```
 
 ## OpenApiPaths

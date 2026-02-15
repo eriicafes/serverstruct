@@ -7,6 +7,7 @@ import {
   eventHandler,
   handler,
   middleware,
+  serve,
 } from "../src";
 
 describe("Application", () => {
@@ -20,18 +21,18 @@ describe("Application", () => {
   }, box);
 
   test("matches routes", async () => {
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("success");
   });
 
   test("route can access box dependencies", async () => {
-    const res = await app.app.request("/env");
+    const res = await app.request("/env");
     expect(await res.json()).toStrictEqual({ env: "testing" });
   });
 
   test("serve returns a server instance", () => {
-    const server = app.serve({ manual: true });
+    const server = serve(app, { manual: true });
 
     expect(server).toBeDefined();
     expect(typeof server.close).toBe("function");
@@ -62,13 +63,13 @@ describe("Controller", () => {
   }, box);
 
   test("controller can access box dependencies", async () => {
-    const res = await app.app.request("/inner/env");
+    const res = await app.request("/inner/env");
     expect(await res.json()).toStrictEqual({ env: "testing" });
   });
 
   test("controller returns custom H3 app", async () => {
     // The custom app has basePath "sub", so routes are nested
-    const res = await app.app.request("/custom/sub/env");
+    const res = await app.request("/custom/sub/env");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ env: "testing" });
   });
@@ -87,7 +88,7 @@ describe("Handler", () => {
       app.get("/config", box.get(getConfigHandler));
     });
 
-    const res = await app.app.request("/config");
+    const res = await app.request("/config");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ value: "config" });
   });
@@ -110,7 +111,7 @@ describe("Handler", () => {
       app.get("/config", box.get(getConfigHandler));
     }, box);
 
-    await app.app.request("/config");
+    await app.request("/config");
 
     // Both should get the same object instance
     expect(appAction.mock.lastCall?.[0]).toBe(handlerAction.mock.lastCall?.[0]);
@@ -132,7 +133,7 @@ describe("EventHandler", () => {
       app.get("/config", box.get(getConfigHandler));
     });
 
-    const res = await app.app.request("/config");
+    const res = await app.request("/config");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ value: "config" });
   });
@@ -157,7 +158,7 @@ describe("EventHandler", () => {
       app.get("/config", box.get(getConfigHandler));
     }, box);
 
-    await app.app.request("/config");
+    await app.request("/config");
 
     // Both should get the same object instance
     expect(appAction.mock.lastCall?.[0]).toBe(handlerAction.mock.lastCall?.[0]);
@@ -177,7 +178,7 @@ describe("EventHandler", () => {
       expect(handler.meta).toStrictEqual({ auth: true, role: "admin" });
     });
 
-    const res = await app.app.request("/data");
+    const res = await app.request("/data");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ data: "test" });
   });
@@ -198,7 +199,7 @@ describe("EventHandler", () => {
       app.get("/protected", box.get(protectedHandler));
     });
 
-    const res = await app.app.request("/protected");
+    const res = await app.request("/protected");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ data: "protected" });
     expect(middlewareAction).toHaveBeenCalled();
@@ -231,7 +232,7 @@ describe("EventHandler", () => {
       expect(handler.meta).toStrictEqual({ version: "1.0", public: false });
     });
 
-    const res = await app.app.request("/complex");
+    const res = await app.request("/complex");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({
       config: { value: "multi-config" },
@@ -253,7 +254,7 @@ describe("Middleware", () => {
       app.get("/", () => ({ message: "Success" }));
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(middlewareAction).toHaveBeenCalled();
   });
@@ -271,7 +272,7 @@ describe("Middleware", () => {
       app.get("/", () => ({ message: "Success" }));
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
   });
 
@@ -293,7 +294,7 @@ describe("Middleware", () => {
       app.get("/", () => ({ message: "Success" }));
     }, box);
 
-    await app.app.request("/");
+    await app.request("/");
 
     // Both should get the same object instance
     expect(middlewareAction.mock.lastCall?.[0]).toBe(
@@ -312,7 +313,7 @@ describe("Middleware", () => {
       app.get("/", () => ({ message: "Success" }));
     });
 
-    const res = await app.app.request("/");
+    const res = await app.request("/");
     expect(res.status).toBe(200);
     expect(await res.json()).toStrictEqual({ message: "Success" });
   });

@@ -13,7 +13,7 @@ npm i @opentelemetry/api @opentelemetry/semantic-conventions @opentelemetry/sdk-
 ## Quick Start
 
 ```typescript
-import { application } from "serverstruct";
+import { application, serve } from "serverstruct";
 import { traceMiddleware } from "serverstruct/otel";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -45,7 +45,7 @@ const app = application((app) => {
   });
 });
 
-const server = app.serve();
+const server = serve(app);
 
 // Gracefully shutdown on exit
 process.on("SIGTERM", async () => {
