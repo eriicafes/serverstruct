@@ -7,7 +7,6 @@ import {
   trace,
   type TextMapGetter,
   type TextMapPropagator,
-  type TextMapSetter,
   type Tracer,
 } from "@opentelemetry/api";
 import {
@@ -60,21 +59,16 @@ interface TraceMiddlewareOptions {
     response?: string[];
   };
   /**
-   * Trace context propagation configuration using OpenTelemetry propagators.
+   * Trace context propagation configuration.
    */
   propagation?: {
     /**
-     * Extract trace context from incoming request headers.
-     * Defaults to true.
-     */
-    request?: boolean;
-    /**
-     * Inject trace context into outgoing response headers.
+     * Disable extraction of trace context from incoming request headers.
      * Defaults to false.
      */
-    response?: boolean;
+    disabled?: boolean;
     /**
-     * Custom propagator for trace context extraction/injection.
+     * Custom propagator for trace context extraction.
      * Defaults to the global OpenTelemetry propagator.
      */
     propagator?: TextMapPropagator;
@@ -123,8 +117,7 @@ interface TraceMiddlewareOptions {
  *     response: ["x-request-id"]
  *   },
  *   propagation: {
- *     request: true,
- *     response: false
+ *     disabled: true
  *   }
  * }));
  * ```
@@ -136,23 +129,18 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
   const responseHeaderAttrs = options?.headers?.response ?? [];
 
   const propagator = options?.propagation?.propagator ?? propagation;
-  const extractRequest = options?.propagation?.request ?? true;
-  const injectResponse = options?.propagation?.response ?? false;
+  const propagationDisabled = options?.propagation?.disabled ?? false;
 
   const getter: TextMapGetter<Headers> = {
     keys: (headers) => Array.from(headers.keys()),
     get: (headers, key) => headers.get(key) ?? undefined,
   };
-  const setter: TextMapSetter<Headers> = {
-    set: (headers, key, value) => headers.set(key, value),
-  };
 
   return defineMiddleware(async (event, next) => {
-    // extract trace from request if enabled
-    const activeCtx = context.active();
-    const extractedCtx = extractRequest
-      ? propagator.extract(activeCtx, event.req.headers, getter)
-      : activeCtx;
+    // extract trace from request if not disabled
+    const extractedCtx = propagationDisabled
+      ? context.active()
+      : propagator.extract(context.active(), event.req.headers, getter);
 
     const url = getRequestURL(event);
     if (url.username) url.username = "REDACTED";
@@ -200,12 +188,6 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
     try {
       const response = await context.with(spanCtx, async () => {
         const result = await next();
-
-        // inject trace to response headers before creating Response (headers are mutable here)
-        if (injectResponse) {
-          propagator.inject(spanCtx, event.res.headers, setter);
-        }
-
         return toResponse(result, event);
       });
 

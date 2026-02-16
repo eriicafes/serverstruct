@@ -1,6 +1,6 @@
 {
   "name": "serverstruct",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Type safe and modular servers with H3",
   "private": false,
   "main": "./dist/index.cjs",

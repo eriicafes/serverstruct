@@ -141,17 +141,14 @@ app.use(traceMiddleware({ tracer }));
 
 ### Trace Context Propagation
 
-Enable distributed tracing across microservices by propagating trace context through HTTP headers.
+Enable distributed tracing across microservices by extracting trace context from incoming HTTP headers (enabled by default).
 
 ```typescript
 app.use(
   traceMiddleware({
     propagation: {
-      // Extract trace context from incoming requests (default: true)
-      request: true,
-
-      // Inject trace context into outgoing responses (default: false)
-      response: true,
+      // Disable extraction of trace context from incoming requests (default: false)
+      disabled: false,
     },
   }),
 );

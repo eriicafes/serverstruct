@@ -351,41 +351,57 @@ describe("traceMiddleware", () => {
     expect(spans[0].events[0].name).toBe("exception");
   });
 
-  test("uses custom propagator", async () => {
-    // Create a custom propagator that modifies headers
-    let extractedValue = "";
+  test("uses custom propagator to extract trace context", async () => {
+    // Create a custom propagator that extracts trace context from headers
     const customPropagator: TextMapPropagator = {
-      inject: (_context, carrier, setter) => {
-        // Add suffix to the extracted value and inject it
-        setter.set(carrier, "x-custom-trace", extractedValue + "-response");
+      inject: () => {},
+      extract: (ctx, carrier, getter) => {
+        const traceId = getter.get(carrier, "x-trace-id");
+        const spanId = getter.get(carrier, "x-span-id");
+
+        if (traceId && spanId) {
+          // Create and set a span context with the extracted IDs
+          return trace.setSpanContext(ctx, {
+            traceId: Array.isArray(traceId) ? traceId[0] : traceId,
+            spanId: Array.isArray(spanId) ? spanId[0] : spanId,
+            traceFlags: 1, // sampled
+          });
+        }
+        return ctx;
       },
-      extract: (context, carrier, getter) => {
-        // Extract the trace header value
-        const value = getter.get(carrier, "x-custom-trace");
-        extractedValue = Array.isArray(value) ? value[0] : value || "";
-        return context;
-      },
-      fields: () => ["x-custom-trace"],
+      fields: () => ["x-trace-id", "x-span-id"],
     };
 
     const app = new H3();
     app.use(
       traceMiddleware({
         propagation: {
-          request: true,
-          response: true,
           propagator: customPropagator,
         },
       }),
     );
     app.get("/test", () => ({ ok: true }));
 
-    const res = await app.request("/test", {
-      headers: { "x-custom-trace": "trace-123" },
+    // Create valid test trace ID (32 hex chars) and span ID (16 hex chars)
+    const testTraceId = "0af7651916cd43dd8448eb211c80319c";
+    const testSpanId = "b7ad6b7169203331";
+
+    await app.request("/test", {
+      headers: {
+        "x-trace-id": testTraceId,
+        "x-span-id": testSpanId,
+      },
     });
 
-    // Verify the custom propagator extracted and injected with suffix
-    expect(res.headers.get("x-custom-trace")).toBe("trace-123-response");
+    const spans = await getFinishedSpans();
+    expect(spans).toHaveLength(1);
+
+    // Verify the span has the extracted trace ID
+    expect(spans[0].spanContext().traceId).toBe(testTraceId);
+
+    // Verify the span has the extracted span ID as its parent
+    expect(spans[0].parentSpanContext?.spanId).toBe(testSpanId);
+    expect(spans[0].parentSpanContext?.traceId).toBe(testTraceId);
   });
 
   test("extracts trace context from request headers by default", async () => {
@@ -411,7 +427,7 @@ describe("traceMiddleware", () => {
     const app = new H3();
     app.use(
       traceMiddleware({
-        propagation: { request: false },
+        propagation: { disabled: true },
       }),
     );
     app.get("/test", () => ({ ok: true }));
@@ -420,36 +436,6 @@ describe("traceMiddleware", () => {
 
     expect(extractSpy).not.toHaveBeenCalled();
     extractSpy.mockRestore();
-  });
-
-  test("injects trace context into response headers when enabled", async () => {
-    const injectSpy = vi.spyOn(propagation, "inject");
-
-    const app = new H3();
-    app.use(
-      traceMiddleware({
-        propagation: { response: true },
-      }),
-    );
-    app.get("/test", () => ({ ok: true }));
-
-    await app.request("/test");
-
-    expect(injectSpy).toHaveBeenCalled();
-    injectSpy.mockRestore();
-  });
-
-  test("does not inject trace context into response headers by default", async () => {
-    const injectSpy = vi.spyOn(propagation, "inject");
-
-    const app = new H3();
-    app.use(traceMiddleware());
-    app.get("/test", () => ({ ok: true }));
-
-    await app.request("/test");
-
-    expect(injectSpy).not.toHaveBeenCalled();
-    injectSpy.mockRestore();
   });
 
   test("uses custom tracer when provided", async () => {
