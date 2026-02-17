@@ -10,14 +10,5 @@ export function apiReference(
   configuration: ApiReferenceConfiguration,
   customTheme?: string,
 ) {
-  return html(
-    getHtmlDocument(
-      {
-        // @ts-expect-error
-        _integration: "serverstruct",
-        ...configuration,
-      },
-      customTheme,
-    ),
-  );
+  return html(getHtmlDocument(configuration, customTheme));
 }
