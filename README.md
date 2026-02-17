@@ -186,11 +186,11 @@ const app = application((app, box) => {
 });
 ```
 
-All middlewares defined with `app.use()` are global and execute before the matched handler in the exact order they are defined.
+> All middlewares defined with `app.use()` are global and execute before the matched handler in the exact order they are defined.
 
 ## Error Handling
 
-Error handlers are middleware that catch errors after calling `await next()`.
+Error handlers are middleware that catch errors thrown by `await next()`.
 
 The last error handler defined executes before earlier ones. The error bubbles through each error handler until a response is returned or the default error response is sent.
 
@@ -310,10 +310,10 @@ const app = application((app) => {
 
   // Access context in handlers
   app.get("/profile", (event) => {
-    // Optional access - returns undefined if not set
+    // returns undefined if not set
     const maybeUser = userContext.lookup(event);
 
-    // Safe access - throws if not set
+    // throws if not set
     const user = userContext.get(event);
 
     return { profile: user };

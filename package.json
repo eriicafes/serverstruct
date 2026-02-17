@@ -1,6 +1,6 @@
 {
   "name": "serverstruct",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Type safe and modular servers with H3",
   "private": false,
   "main": "./dist/index.cjs",
@@ -59,6 +59,8 @@
     "h3",
     "server",
     "DI",
+    "OpenAPI",
+    "OpenTelemetry",
     "typescript"
   ],
   "author": "Eric Afes <eriicafes@gmail.com>",
