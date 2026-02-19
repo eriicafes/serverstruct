@@ -1,5 +1,15 @@
 # serverstruct
 
+## 1.3.0
+
+### Minor Changes
+
+- 11e53bd: Add `route` function for defining standalone OpenAPI routes
+
+### Patch Changes
+
+- a97a191: Use transient for controller, handler, eventHandler, middleware and route constructors
+
 ## 1.2.0
 
 ### Minor Changes
