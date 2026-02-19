@@ -108,7 +108,7 @@ const app = application((app, box) => {
   app.get("/count", () => ({
     users: store.users.length,
   }));
-  app.mount("/users", box.new(usersController));
+  app.mount("/users", box.get(usersController));
 });
 
 serve(app, { port: 3000 });
@@ -131,7 +131,7 @@ const getUserHandler = handler((event, box) => {
 
 // Use it in your app
 const app = application((app, box) => {
-  app.get("/users/:id", box.new(getUserHandler));
+  app.get("/users/:id", box.get(getUserHandler));
 });
 ```
 
@@ -156,7 +156,7 @@ const getUserHandler = eventHandler((box) => ({
 
 // Use it in your app
 const app = application((app, box) => {
-  app.get("/users/:id", box.new(getUserHandler));
+  app.get("/users/:id", box.get(getUserHandler));
 });
 ```
 

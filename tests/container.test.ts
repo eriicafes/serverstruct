@@ -29,7 +29,7 @@ describe("Container", () => {
         const counter = box.get(Counter);
         routeAction(counter);
       });
-      app.mount("", box.new(childController));
+      app.mount("", box.get(childController));
     }, box);
 
     await app.request("/");
@@ -57,7 +57,7 @@ describe("Container", () => {
     });
 
     const app = application((app, box) => {
-      app.mount("", box.new(testController));
+      app.mount("", box.get(testController));
     });
 
     await app.request("/");

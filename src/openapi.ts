@@ -1,4 +1,4 @@
-import { Box, Constructor, factory } from "getbox";
+import { Box, Constructor, transient } from "getbox";
 import {
   definePlugin,
   getQuery,
@@ -570,7 +570,7 @@ export function createRouter(app: H3, paths: OpenApiPaths) {
  * directly, or an object with a `handler` and other route options (e.g. `meta`, `middleware`).
  *
  * @param options.setup - Returns the handler or `{ handler, ...RouteOptions }`.
- * @returns A Constructor that produces a {@link Route}.
+ * @returns A Constructor that produces a {@link Route}. Not cached by Box.
  *
  * @example
  * ```ts
@@ -615,7 +615,7 @@ export function route<T extends ZodOpenApiOperationObject>(options: {
         }
       >;
 }): Constructor<Route<T>> {
-  return factory((box) => {
+  return transient((box) => {
     const { method, path, operation, setup } = options;
     const methods = typeof method === "string" ? [method] : method;
     const res = setup(box);

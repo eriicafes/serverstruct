@@ -1,4 +1,4 @@
-import { Box, Constructor, factory } from "getbox";
+import { Box, Constructor, transient } from "getbox";
 import {
   defineHandler,
   defineMiddleware,
@@ -43,7 +43,7 @@ type MaybePromise<T = unknown> = T | Promise<T>;
  *
  * const app = application((app, box) => {
  *   app.get("/ping", () => "pong");
- *   app.mount("/users", box.new(usersController));
+ *   app.mount("/users", box.get(usersController));
  * });
  *
  * serve(app, { port: 3000 });
@@ -61,7 +61,7 @@ export function application(
  * Creates an H3 app constructor.
  *
  * @param setup - Function that configures the app.
- * @returns A Constructor that produces an H3 app.
+ * @returns A Constructor that produces an H3 app. Not cached by Box.
  *
  * @example
  * ```typescript
@@ -79,21 +79,21 @@ export function application(
  *
  * // Use it in your app
  * const app = application((app, box) => {
- *   app.mount("/users", box.new(usersController));
+ *   app.mount("/users", box.get(usersController));
  * });
  * ```
  */
 export function controller(
   setup: (app: H3, box: Box) => H3 | void,
 ): Constructor<H3> {
-  return factory((box) => application(setup, box));
+  return transient((box) => application(setup, box));
 }
 
 /**
  * Creates a handler constructor.
  *
  * @param setup - Handler function that receives the event and Box instance.
- * @returns A Constructor that produces an H3 handler.
+ * @returns A Constructor that produces an H3 handler. Not cached by Box.
  *
  * @example
  * ```typescript
@@ -120,7 +120,7 @@ export function handler<
   Res = unknown,
   Req extends EventHandlerRequest = EventHandlerRequest,
 >(setup: (event: H3Event<Req>, box: Box) => Res) {
-  return factory((box) =>
+  return transient((box) =>
     defineHandler<Req, Res>((event) => setup(event, box)),
   );
 }
@@ -129,7 +129,7 @@ export function handler<
  * Creates an event handler constructor from a setup function.
  *
  * @param setup - Function that receives Box instance and returns an event handler object.
- * @returns A Constructor that produces an H3 event handler.
+ * @returns A Constructor that produces an H3 event handler. Not cached by Box.
  *
  * @example
  * ```typescript
@@ -159,14 +159,14 @@ export function eventHandler<
   Res = unknown,
   Req extends EventHandlerRequest = EventHandlerRequest,
 >(setup: (box: Box) => EventHandlerObject<Req, Res>) {
-  return factory((box) => defineHandler<Req, Res>(setup(box)));
+  return transient((box) => defineHandler<Req, Res>(setup(box)));
 }
 
 /**
  * Creates a middleware constructor.
  *
  * @param setup - Middleware function that receives the event, next function, and Box instance.
- * @returns A Constructor that produces an H3 middleware.
+ * @returns A Constructor that produces an H3 middleware. Not cached by Box.
  *
  * @example
  * ```typescript
@@ -199,7 +199,7 @@ export function middleware(
     box: Box,
   ) => MaybePromise<unknown | undefined>,
 ): Constructor<Middleware> {
-  return factory((box) =>
+  return transient((box) =>
     defineMiddleware((event, next) => setup(event, next, box)),
   );
 }

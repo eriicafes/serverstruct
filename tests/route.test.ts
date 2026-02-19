@@ -58,8 +58,8 @@ describe("Controller", () => {
   });
 
   const app = application((app, box) => {
-    app.mount("/inner", box.new(innerController));
-    app.mount("/custom", box.new(customController));
+    app.mount("/inner", box.get(innerController));
+    app.mount("/custom", box.get(customController));
   }, box);
 
   test("controller can access box dependencies", async () => {
