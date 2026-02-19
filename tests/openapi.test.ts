@@ -1,3 +1,4 @@
+import { Box } from "getbox";
 import { H3 } from "h3";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import {
   jsonResponse,
   metadata,
   OpenApiPaths,
+  route,
 } from "../src/openapi";
 
 /** Minimal valid operation object. */
@@ -690,6 +692,269 @@ describe("OpenApiRouter", () => {
       .patch("/e", op("e"), () => ({}));
 
     expect(result).toBe(router);
+  });
+});
+
+describe("route", () => {
+  test("registers operation in paths and handler on app", async () => {
+    const box = new Box();
+    const app = new H3();
+    const paths = new OpenApiPaths();
+    const operation = op("getUser");
+
+    const getUser = route({
+      method: "get",
+      path: "/users/:id",
+      operation,
+      setup: () => () => ({ found: true }),
+    });
+
+    app.register(box.get(getUser)(paths));
+
+    expect(paths.paths["/users/{id}"]).toStrictEqual({ get: operation });
+
+    const res = await app.request("/users/1");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ found: true });
+  });
+
+  test("converts H3 path syntax to OpenAPI format", () => {
+    const box = new Box();
+    const app = new H3();
+    const paths = new OpenApiPaths();
+
+    const mk = (path: string, operationId: string) =>
+      route({ method: "get", path, operation: op(operationId), setup: () => () => ({}) });
+
+    app.register(box.get(mk("/users/:id", "getUser"))(paths));
+    app.register(box.get(mk("/files/*", "getFile"))(paths));
+    app.register(box.get(mk("/docs/**", "getDocs"))(paths));
+
+    expect(paths.paths["/users/{id}"]).toBeDefined();
+    expect(paths.paths["/files/{param}"]).toBeDefined();
+    expect(paths.paths["/docs/{path}"]).toBeDefined();
+  });
+
+  test("accepts an array of methods", async () => {
+    const box = new Box();
+    const app = new H3();
+    const paths = new OpenApiPaths();
+    const operation = op("items");
+
+    const items = route({
+      method: ["get", "post"],
+      path: "/items",
+      operation,
+      setup: () => () => ({ ok: true }),
+    });
+
+    app.register(box.get(items)(paths));
+
+    expect(paths.paths["/items"]).toStrictEqual({ get: operation, post: operation });
+
+    const getRes = await app.request("/items");
+    expect(getRes.status).toBe(200);
+
+    const postRes = await app.request("/items", { method: "POST" });
+    expect(postRes.status).toBe(200);
+  });
+
+  test("handler receives RouterContext", async () => {
+    const box = new Box();
+    const app = new H3();
+    const paths = new OpenApiPaths();
+    const bodySchema = z.object({ title: z.string() });
+
+    const createPost = route({
+      method: "post",
+      path: "/posts",
+      operation: {
+        operationId: "createPost",
+        requestBody: jsonRequest(bodySchema),
+        responses: {
+          201: jsonResponse(z.object({ id: z.string() }), {
+            description: "Created",
+          }),
+        },
+      },
+      setup: () => async (event, ctx) => {
+        const body = await ctx.body(event);
+        return ctx.reply(event, 201, { id: "new-" + body.title });
+      },
+    });
+
+    app.register(box.get(createPost)(paths));
+
+    const res = await app.request("/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "hello" }),
+    });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toStrictEqual({ id: "new-hello" });
+  });
+
+  test("setup receives Box instance for dependency injection", async () => {
+    const box = new Box();
+    const app = new H3();
+    const paths = new OpenApiPaths();
+
+    class PostService {
+      id = Math.random();
+
+      createPost() {
+        return { id: this.id };
+      }
+    }
+
+    const createPost = route({
+      method: "post",
+      path: "/posts",
+      operation: {
+        operationId: "createPost",
+        responses: {
+          201: jsonResponse(z.object({ id: z.number() }), {
+            description: "Created",
+          }),
+        },
+      },
+      setup(box) {
+        const svc = box.get(PostService);
+        return (event, ctx) => ctx.reply(event, 201, svc.createPost());
+      },
+    });
+
+    // The same Box instance is shared, so svc resolved in setup is the singleton
+    app.register(box.get(createPost)(paths));
+
+    const res = await app.request("/posts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toStrictEqual({ id: box.get(PostService).id });
+  });
+
+  test("calling route again on same path keeps first paths entry", () => {
+    const box = new Box();
+    const app = new H3();
+    const paths = new OpenApiPaths();
+    const op1 = op("getUser");
+    const op2 = op("getUser");
+
+    const getUser1 = route({ method: "get", path: "/users/:id", operation: op1, setup: () => () => ({}) });
+    const getUser2 = route({ method: "get", path: "/users/:id", operation: op2, setup: () => () => ({}) });
+
+    app.register(box.get(getUser1)(paths));
+    app.register(box.get(getUser2)(paths));
+
+    expect(paths.paths["/users/{id}"]!.get).toBe(op1);
+  });
+
+  test("setup can return object with handler for advanced use", async () => {
+    const box = new Box();
+    const app = new H3();
+    const paths = new OpenApiPaths();
+
+    const createPost = route({
+      method: "post",
+      path: "/posts",
+      operation: op("createPost"),
+      setup: () => ({
+        meta: { auth: true },
+        handler: () => ({ created: true }),
+      }),
+    });
+
+    app.register(box.get(createPost)(paths));
+
+    const res = await app.request("/posts", { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ created: true });
+  });
+
+  describe("paths.routes()", () => {
+    test("registers multiple routes' operations in paths", () => {
+      const box = new Box();
+      const app = new H3();
+      const paths = new OpenApiPaths();
+      const getOp = op("getPost");
+      const createOp = op("createPost");
+
+      const getPost = route({
+        method: "get",
+        path: "/posts/:id",
+        operation: getOp,
+        setup: () => () => ({}),
+      });
+      const createPost = route({
+        method: "post",
+        path: "/posts",
+        operation: createOp,
+        setup: () => () => ({}),
+      });
+
+      app.register(paths.routes(box.get(getPost), box.get(createPost)));
+
+      expect(paths.paths["/posts/{id}"]!.get).toBe(getOp);
+      expect(paths.paths["/posts"]!.post).toBe(createOp);
+    });
+
+    test("mounts all route handlers on the app", async () => {
+      const box = new Box();
+      const app = new H3();
+      const paths = new OpenApiPaths();
+
+      const getPost = route({
+        method: "get",
+        path: "/posts/:id",
+        operation: op("getPost"),
+        setup: () => () => ({ method: "get" }),
+      });
+      const createPost = route({
+        method: "post",
+        path: "/posts",
+        operation: op("createPost"),
+        setup: () => () => ({ method: "post" }),
+      });
+
+      app.register(paths.routes(box.get(getPost), box.get(createPost)));
+
+      const getRes = await app.request("/posts/1");
+      expect(getRes.status).toBe(200);
+      expect(await getRes.json()).toStrictEqual({ method: "get" });
+
+      const postRes = await app.request("/posts", { method: "POST" });
+      expect(postRes.status).toBe(200);
+      expect(await postRes.json()).toStrictEqual({ method: "post" });
+    });
+
+    test("handlers receive RouterContext", async () => {
+      const box = new Box();
+      const app = new H3();
+      const paths = new OpenApiPaths();
+      const paramsSchema = z.object({ id: z.coerce.number() });
+
+      const getPost = route({
+        method: "get",
+        path: "/posts/:id",
+        operation: {
+          operationId: "getPost",
+          requestParams: { path: paramsSchema },
+          responses: {},
+        },
+        setup: () => async (event, ctx) => {
+          const { id } = await ctx.params(event);
+          return { id };
+        },
+      });
+
+      app.register(paths.routes(box.get(getPost)));
+
+      const res = await app.request("/posts/42");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toStrictEqual({ id: 42 });
+    });
   });
 });
 

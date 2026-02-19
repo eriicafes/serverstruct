@@ -1,4 +1,6 @@
+import { Box, Constructor, factory } from "getbox";
 import {
+  definePlugin,
   getQuery,
   getRouterParams,
   getValidatedQuery,
@@ -9,6 +11,7 @@ import {
   readBody,
   readValidatedBody,
   type EventHandlerResponse,
+  type H3Plugin,
   type RouteOptions,
 } from "h3";
 import { safeParse, ZodError, type output } from "zod";
@@ -331,39 +334,44 @@ type HttpMethod = (typeof HTTP_METHODS)[number];
 export class OpenApiPaths {
   public paths: ZodOpenApiPathsObject = {};
 
+  /** Register an operation for the GET method. */
   get<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
   ): RouterContext<T> {
-    return this.register(path, "get", operation);
+    return this.on(["get"], path, operation);
   }
 
+  /** Register an operation for the POST method. */
   post<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
   ): RouterContext<T> {
-    return this.register(path, "post", operation);
+    return this.on(["post"], path, operation);
   }
 
+  /** Register an operation for the PUT method. */
   put<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
   ): RouterContext<T> {
-    return this.register(path, "put", operation);
+    return this.on(["put"], path, operation);
   }
 
+  /** Register an operation for the DELETE method. */
   delete<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
   ): RouterContext<T> {
-    return this.register(path, "delete", operation);
+    return this.on(["delete"], path, operation);
   }
 
+  /** Register an operation for the PATCH method. */
   patch<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
   ): RouterContext<T> {
-    return this.register(path, "patch", operation);
+    return this.on(["patch"], path, operation);
   }
 
   /** Register an operation for all standard HTTP methods (get, post, put, delete, patch). */
@@ -382,19 +390,33 @@ export class OpenApiPaths {
   ): RouterContext<T> {
     const item: Record<string, T> = {};
     for (const method of methods) {
-      item[method] = operation;
+      if (!this.paths[path]?.[method]) item[method] = operation;
     }
     this.paths[path] = { ...this.paths[path], ...item };
     return createContext(operation);
   }
 
-  private register<T extends ZodOpenApiOperationObject>(
-    path: string,
-    method: HttpMethod,
-    operation: T,
-  ): RouterContext<T> {
-    this.paths[path] = { ...this.paths[path], [method]: operation };
-    return createContext(operation);
+  /**
+   * Registers multiple routes' operations in `paths` and returns an {@link H3Plugin}
+   * that mounts all their handlers on the app when registered.
+   *
+   * @example
+   * ```ts
+   * const getPost = route({ method: "get", path: "/posts/:id", ... });
+   * const createPost = route({ method: "post", path: "/posts", ... });
+   *
+   * const getPostRoute = box.get(getPost);
+   * const createPostRoute = box.get(createPost);
+   *
+   * app.register(paths.routes(getPostRoute, createPostRoute));
+   * ```
+   */
+  routes(...routes: Route<any>[]): H3Plugin {
+    return definePlugin((app) => {
+      for (const route of routes) {
+        app.register(route(this));
+      }
+    })();
   }
 }
 
@@ -429,6 +451,7 @@ export class OpenApiRouter {
     protected paths: OpenApiPaths,
   ) {}
 
+  /** Register a route and operation for the GET method. */
   get<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
@@ -440,6 +463,7 @@ export class OpenApiRouter {
     return this;
   }
 
+  /** Register a route and operation for the POST method. */
   post<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
@@ -451,6 +475,7 @@ export class OpenApiRouter {
     return this;
   }
 
+  /** Register a route and operation for the PUT method. */
   put<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
@@ -462,6 +487,7 @@ export class OpenApiRouter {
     return this;
   }
 
+  /** Register a route and operation for the DELETE method. */
   delete<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
@@ -473,6 +499,7 @@ export class OpenApiRouter {
     return this;
   }
 
+  /** Register a route and operation for the PATCH method. */
   patch<T extends ZodOpenApiOperationObject>(
     path: string,
     operation: T,
@@ -512,10 +539,107 @@ export class OpenApiRouter {
   }
 }
 
-/** Create an {@link OpenApiRouter} that combines H3 route registration with OpenAPI path collection. */
+/**
+ * Creates an {@link OpenApiRouter} that combines H3 route registration with OpenAPI path collection.
+ *
+ * @param app - H3 application instance.
+ * @param paths - {@link OpenApiPaths} instance to collect operation definitions.
+ * @returns An {@link OpenApiRouter} instance.
+ *
+ * @example
+ * ```ts
+ * const router = createRouter(app, box.get(OpenApiPaths));
+ *
+ * router.get("/posts/:id", {
+ *   operationId: "getPost",
+ *   responses: { 200: jsonResponse(postSchema, { description: "Success" }) },
+ * }, async (event, ctx) => {
+ *   const { id } = await ctx.params(event);
+ *   return ctx.reply(event, 200, { id });
+ * });
+ * ```
+ */
 export function createRouter(app: H3, paths: OpenApiPaths) {
   return new OpenApiRouter(app, paths);
 }
+
+/**
+ * Creates a Route constructor.
+ *
+ * `setup` is called once with the Box to resolve dependencies. Return a handler function
+ * directly, or an object with a `handler` and other route options (e.g. `meta`, `middleware`).
+ *
+ * @param options.setup - Returns the handler or `{ handler, ...RouteOptions }`.
+ * @returns A Constructor that produces a {@link Route}.
+ *
+ * @example
+ * ```ts
+ * const getPost = route({
+ *   method: "get",
+ *   path: "/posts/:id",
+ *   operation: {
+ *     operationId: "getPost",
+ *     responses: { 200: jsonResponse(postSchema, { description: "Success" }) },
+ *   },
+ *   setup(box) {
+ *     const db = box.get(Database);
+ *     return async (event, ctx) => {
+ *       const { id } = await ctx.params(event);
+ *       return ctx.reply(event, 200, await db.getPost(id));
+ *     };
+ *   },
+ * });
+ *
+ * const getPostRoute = box.get(getPost);
+ *
+ * // Register a single route
+ * app.register(getPostRoute(paths));
+ *
+ * // Or register multiple routes at once
+ * app.register(paths.routes(getPostRoute, createPostRoute));
+ * ```
+ */
+export function route<T extends ZodOpenApiOperationObject>(options: {
+  method: HttpMethod | readonly HttpMethod[];
+  path: string;
+  operation: T;
+  setup: (box: Box) =>
+    | ((event: H3Event, ctx: RouterContext<T>) => EventHandlerResponse)
+    | PrettyMerge<
+        RouteOptions,
+        {
+          handler: (
+            event: H3Event,
+            ctx: RouterContext<T>,
+          ) => EventHandlerResponse;
+        }
+      >;
+}): Constructor<Route<T>> {
+  return factory((box) => {
+    const { method, path, operation, setup } = options;
+    const methods = typeof method === "string" ? [method] : method;
+    const res = setup(box);
+    const { handler, ...opts } =
+      typeof res === "function" ? { handler: res } : res;
+
+    return definePlugin<OpenApiPaths>((app, paths) => {
+      const ctx = paths.on(methods, toOpenApiPath(path), operation);
+      for (const method of methods) {
+        app.on(method, path, (event) => handler(event, ctx), opts);
+      }
+    });
+  });
+}
+
+/**
+ * A route plugin produced by {@link route}.
+ *
+ * Call with an {@link OpenApiPaths} instance to get an {@link H3Plugin}
+ * that registers the operation and mounts the handler on the app.
+ */
+export type Route<_T extends ZodOpenApiOperationObject> = (
+  paths: OpenApiPaths,
+) => H3Plugin;
 
 // ---- Helpers ----
 

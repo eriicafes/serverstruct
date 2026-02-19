@@ -24,7 +24,8 @@ import {
 } from "serverstruct/openapi";
 
 const app = application((app, box) => {
-  const router = createRouter(app, box.get(OpenApiPaths));
+  const paths = box.get(OpenApiPaths);
+  const router = createRouter(app, paths);
 
   router.post(
     "/posts",
@@ -49,12 +50,11 @@ const app = application((app, box) => {
   );
 
   // Serve the OpenAPI document
-  const { paths } = box.get(OpenApiPaths);
   app.get("/docs", () =>
     createDocument({
       openapi: "3.1.0",
       info: { title: "My API", version: "1.0.0" },
-      paths,
+      paths: paths.paths,
     }),
   );
 });
@@ -66,9 +66,11 @@ serve(app, { port: 3000 });
 
 `OpenApiPaths` collects operation definitions for document generation. Register operations by HTTP method and use the returned `RouterContext` for typed request handling.
 
-Since `OpenApiPaths` is a class it can be used as a getbox singleton:
+Since `OpenApiPaths` is a class it can be used as a getbox shared instance:
 
 ```typescript
+import { getValidatedQuery, getValidatedRouterParams, readValidatedBody } from "h3";
+
 const app = application((app, box) => {
   const paths = box.get(OpenApiPaths);
 
@@ -100,25 +102,14 @@ const app = application((app, box) => {
 });
 ```
 
-### Methods
+## Router
 
-- `get(path, operation)` — Register a GET operation
-- `post(path, operation)` — Register a POST operation
-- `put(path, operation)` — Register a PUT operation
-- `delete(path, operation)` — Register a DELETE operation
-- `patch(path, operation)` — Register a PATCH operation
-- `all(path, operation)` — Register for all standard methods
-- `on(methods, path, operation)` — Register for specific methods
-
-All methods return a `RouterContext`.
-
-## OpenApiRouter
-
-`OpenApiRouter` combines OpenAPI path registration with H3 route registration. It converts H3 path syntax (`:param`) to OpenAPI format (`{param}`) automatically. The handler function receives the `RouterContext` as its second argument.
+`OpenApiRouter` combines OpenAPI path registration with H3 route registration. The handler function receives the `RouterContext` as its second argument.
 
 ```typescript
 const app = application((app, box) => {
-  const router = createRouter(app, box.get(OpenApiPaths));
+  const paths = box.get(OpenApiPaths);
+  const router = createRouter(app, paths);
 
   router.get(
     "/users/:id",
@@ -156,19 +147,83 @@ const app = application((app, box) => {
 });
 ```
 
-Methods mirror `OpenApiPaths` but take an additional `handler` and optional `opts` parameter. All methods return `this` for chaining:
+## Routes
 
-- `get(path, operation, handler, opts?)`
-- `post(path, operation, handler, opts?)`
-- `put(path, operation, handler, opts?)`
-- `delete(path, operation, handler, opts?)`
-- `patch(path, operation, handler, opts?)`
-- `all(path, operation, handler, opts?)`
-- `on(methods, path, operation, handler, opts?)`
+`route()` creates a standalone route constructor. Each route defines its HTTP method, path, operation, and handler together.
+
+```typescript
+import { application, serve } from "serverstruct";
+import { z } from "zod";
+import {
+  createDocument,
+  jsonRequest,
+  jsonResponse,
+  OpenApiPaths,
+  route,
+} from "serverstruct/openapi";
+
+const getPost = route({
+  method: "get",
+  path: "/posts/:id",
+  operation: {
+    operationId: "getPost",
+    requestParams: {
+      path: z.object({ id: z.string() }),
+    },
+    responses: {
+      200: jsonResponse(postSchema, { description: "Post found" }),
+    },
+  },
+  setup(box) {
+    const db = box.get(Database);
+    return async (event, ctx) => {
+      const { id } = await ctx.params(event);
+      return ctx.reply(event, 200, await db.findPost(id));
+    };
+  },
+});
+
+const createPost = route({
+  method: "post",
+  path: "/posts",
+  operation: {
+    operationId: "createPost",
+    requestBody: jsonRequest(z.object({ title: z.string() })),
+    responses: {
+      201: jsonResponse(postSchema, { description: "Post created" }),
+    },
+  },
+  setup(box) {
+    const db = box.get(Database);
+    return {
+      meta: { auth: true },
+      async handler(event, ctx) {
+        const body = await ctx.body(event);
+        return ctx.reply(event, 201, await db.createPost(body));
+      },
+    };
+  },
+});
+
+const app = application((app, box) => {
+  const paths = box.get(OpenApiPaths);
+
+  const getPostRoute = box.get(getPost);
+  const createPostRoute = box.get(createPost);
+
+  // Register multiple routes at once
+  app.register(paths.routes(getPostRoute, createPostRoute));
+
+  // Or register individually
+  app.register(getPostRoute(paths));
+});
+
+serve(app, { port: 3000 });
+```
 
 ## Path Conversion
 
-`OpenApiRouter` automatically converts H3 path syntax to OpenAPI format:
+`OpenApiRouter` and `route()` both accept H3 path syntax and automatically convert it to OpenAPI format:
 
 | H3       | OpenAPI    |
 | -------- | ---------- |
