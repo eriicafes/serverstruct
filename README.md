@@ -56,7 +56,7 @@ const app = application((app) => {
 serve(app, { port: 3000 });
 ```
 
-When an app is mounted, its middlewares and routes are copied to the main app in place with middlewares scoped to the base path.
+When an app is mounted, its middlewares and routes are copied to the main app in place with middlewares scoped to its base path.
 
 Both `application()` and `controller()` can return a custom H3 instance:
 
@@ -186,13 +186,15 @@ const app = application((app, box) => {
 });
 ```
 
-> All middlewares defined with `app.use()` are global and execute before the matched handler in the exact order they are defined.
+> All middlewares defined with `app.use()` are global and execute before the matched handler in the exact order they are added to the app.
 
 ## Error Handling
 
 Error handlers are middleware that catch errors thrown by `await next()`.
 
 The last error handler defined executes before earlier ones. The error bubbles through each error handler until a response is returned or the default error response is sent.
+
+> You can return or throw errors from handlers, but only `HTTPError` will be exposed to the client. All other errors produce a generic 500 response.
 
 Use H3's `onError` helper to define error handlers:
 

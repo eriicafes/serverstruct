@@ -62,47 +62,7 @@ const app = application((app, box) => {
 serve(app, { port: 3000 });
 ```
 
-## OpenApiPaths
-
-`OpenApiPaths` collects operation definitions for document generation. Register operations by HTTP method and use the returned `RouterContext` for typed request handling.
-
-Since `OpenApiPaths` is a class it can be used as a getbox shared instance:
-
-```typescript
-import { getValidatedQuery, getValidatedRouterParams, readValidatedBody } from "h3";
-
-const app = application((app, box) => {
-  const paths = box.get(OpenApiPaths);
-
-  const getUser = paths.get("/users/{id}", {
-    operationId: "getUser",
-    requestParams: {
-      path: z
-        .object({ id: z.string() })
-        .meta({ description: "User path parameters" }),
-    },
-    responses: {
-      200: {
-        description: "User found",
-        content: { "application/json": { schema: userSchema } },
-      },
-    },
-  });
-
-  app.get("/users/:id", async (event) => {
-    const params = await getValidatedRouterParams(
-      event,
-      getUser.schemas.params,
-    );
-    const query = await getValidatedQuery(event, getUser.schemas.query);
-    const body = await readValidatedBody(event, getUser.schemas.body);
-    // getUser.schemas.headers and getUser.schemas.cookies are also available
-    return getUser.reply(event, 200, { id: params.id, name: "Alice" });
-  });
-});
-```
-
-## Router
+## Use a Router
 
 `OpenApiRouter` combines OpenAPI path registration with H3 route registration. The handler function receives the `RouterContext` as its second argument.
 
@@ -147,7 +107,7 @@ const app = application((app, box) => {
 });
 ```
 
-## Routes
+## Use Routes
 
 `route()` creates a standalone route constructor. Each route defines its HTTP method, path, operation, and handler together.
 
@@ -219,6 +179,115 @@ const app = application((app, box) => {
 });
 
 serve(app, { port: 3000 });
+```
+
+## Route Context
+
+Every operation registration returns a `RouterContext` with typed access to request data and helpers for sending responses.
+
+### Schemas
+
+`ctx.schemas` exposes the raw Zod schemas extracted from the operation, for use with H3 validation utilities directly:
+
+```typescript
+ctx.schemas.params; // requestParams.path schema
+ctx.schemas.query; // requestParams.query schema
+ctx.schemas.headers; // requestParams.header schema
+ctx.schemas.cookies; // requestParams.cookie schema
+ctx.schemas.body; // requestBody application/json schema
+```
+
+### Request Validation
+
+`ctx.params()`, `ctx.query()`, and `ctx.body()` validate and parse incoming request data using the operation's schemas. When no schema is defined they return the raw value.
+
+```typescript
+router.post(
+  "/posts/:id/comments",
+  {
+    operationId: "createComment",
+    requestParams: {
+      path: z.object({ id: z.coerce.number() }),
+      query: z.object({ draft: z.coerce.boolean().optional() }),
+    },
+    requestBody: jsonRequest(z.object({ text: z.string().min(1) })),
+    responses: { 201: jsonResponse(commentSchema, { description: "Created" }) },
+  },
+  async (event, ctx) => {
+    const { id } = await ctx.params(event); // { id: number }
+    const { draft } = await ctx.query(event); // { draft?: boolean }
+    const body = await ctx.body(event); // { text: string }
+
+    return ctx.reply(event, 201, await db.createComment(id, body, draft));
+  },
+);
+```
+
+A validation failure throws an `HTTPError` with status 400.
+
+### Response Validation
+
+`ctx.reply()` sets the response status and optional headers and returns typed response data. Types are inferred per status code from the operation's `responses` but not validated at runtime.
+
+```typescript
+return ctx.reply(event, 200, { id: "1", name: "Alice" });
+return ctx.reply(
+  event,
+  200,
+  { id: "1", name: "Alice" },
+  { "x-request-id": "abc" },
+);
+```
+
+`ctx.validReply()` works the same way but also validates the response body and headers against their schemas at runtime.
+
+```typescript
+return ctx.validReply(event, 201, { score: 85 });
+// Throws a 500 HTTPError if the response does not match the schema
+```
+
+## Manually Register Paths
+
+`OpenApiPaths` collects operation definitions for document generation. Register operations by HTTP method and use the returned `RouterContext` for typed request handling.
+
+Since `OpenApiPaths` is a class it can be used as a shared instance:
+
+```typescript
+import {
+  getValidatedQuery,
+  getValidatedRouterParams,
+  readValidatedBody,
+} from "h3";
+
+const app = application((app, box) => {
+  const paths = box.get(OpenApiPaths);
+
+  const getUser = paths.get("/users/{id}", {
+    operationId: "getUser",
+    requestParams: {
+      path: z
+        .object({ id: z.string() })
+        .meta({ description: "User path parameters" }),
+    },
+    responses: {
+      200: {
+        description: "User found",
+        content: { "application/json": { schema: userSchema } },
+      },
+    },
+  });
+
+  app.get("/users/:id", async (event) => {
+    const params = await getValidatedRouterParams(
+      event,
+      getUser.schemas.params,
+    );
+    const query = await getValidatedQuery(event, getUser.schemas.query);
+    const body = await readValidatedBody(event, getUser.schemas.body);
+    // getUser.schemas.headers and getUser.schemas.cookies are also available
+    return getUser.reply(event, 200, { id: params.id, name: "Alice" });
+  });
+});
 ```
 
 ## Path Conversion
@@ -339,3 +408,31 @@ app.get("/reference", () =>
 ```
 
 The `url` should point to the endpoint serving your OpenAPI document (see [Generating the Document](#generating-the-document) below).
+
+## Client Type Generation
+
+Use [openapi-typescript](https://openapi-ts.dev/) to generate TypeScript types from your running document endpoint:
+
+```sh
+npm i -D openapi-typescript
+npx openapi-typescript http://localhost:3000/docs -o ./schema.ts
+```
+
+Then use [openapi-fetch](https://openapi-ts.dev/openapi-fetch/) to create a fully typed fetch client from the generated `paths` type:
+
+```sh
+npm i openapi-fetch
+```
+
+```typescript
+import createClient from "openapi-fetch";
+import type { paths } from "./schema.ts";
+
+const client = createClient<paths>({ baseUrl: "http://localhost:3000" });
+
+const { data, error } = await client.GET("/posts/{id}", {
+  params: { path: { id: "1" } },
+});
+```
+
+Request parameters, request body, and response data are all typed from the generated schema.
