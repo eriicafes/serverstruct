@@ -1,5 +1,12 @@
 # serverstruct
 
+## 1.4.0
+
+### Minor Changes
+
+- 597d6f1: Replace `OpenApiPaths.routes` with `OpenApiRouter.route` and deprecate `OpenApiPaths.routes`
+- 597d6f1: Replace `createRouter` with `useRouter` and deprecate `createRouter`
+
 ## 1.3.0
 
 ### Minor Changes
