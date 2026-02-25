@@ -29,8 +29,8 @@ serve(app, { port: 3000 });
 
 ## Application
 
-`application()` creates an H3 instance and a Box instance for dependency injection.
-You can pass a Box instance to share dependencies across applications (see [Box Instance](#box-instance)).
+`application()` creates an H3 instance.
+A Box instance is created for the application and available as the second argument to the function.
 
 You can mount other apps using `app.mount()`:
 
@@ -38,19 +38,26 @@ You can mount other apps using `app.mount()`:
 import { H3 } from "h3";
 import { application, serve } from "serverstruct";
 
-// Create a sub application
-const usersApp = application((app) => {
-  app.get("/", () => ["Alice", "Bob"]);
+class UserStore {
+  public users: User[] = [];
+
+  add(user: User) {
+    this.users.push(user);
+    return user;
+  }
+}
+
+// Create an application
+const usersApp = application((app, box) => {
+  const store = box.get(UserStore);
+
+  app.get("/", () => store.users);
 });
 
-// Create a regular H3 instance
-const docsApp = new H3().get("/", () => "API Documentation");
-
-// Mount in main app
+// Mount in another app
 const app = application((app) => {
   app.get("/", () => "Hello world!");
   app.mount("/users", usersApp);
-  app.mount("/docs", docsApp);
 });
 
 serve(app, { port: 3000 });
@@ -80,15 +87,6 @@ Controllers are apps that are initialized with a parent Box instance, sharing th
 
 ```typescript
 import { application, controller } from "serverstruct";
-
-class UserStore {
-  public users: User[] = [];
-
-  add(user: User) {
-    this.users.push(user);
-    return user;
-  }
-}
 
 // Create a controller
 const usersController = controller((app, box) => {
@@ -274,16 +272,33 @@ import { application, serve } from "serverstruct";
 
 const box = new Box();
 
-const usersApp = application((app, box) => {
-  const store = box.get(UserStore);
-  app.get("/", () => store.users);
-}, box);
-
 const app = application((app, box) => {
   const store = box.get(UserStore);
+
   app.get("/count", () => store.users.length);
   app.mount("/users", usersApp);
 }, box);
+
+serve(app, { port: 3000 });
+```
+
+If you need to pass a custom Box instance to an application it may be better to use a controller instead,
+which is also easier to test.
+
+```typescript
+// app.ts
+import { Box } from "getbox";
+import { controller, serve } from "serverstruct";
+
+export const appController = controller((app) => {
+  const store = box.get(UserStore);
+
+  app.get("/count", () => store.users.length);
+  app.mount("/users", usersApp);
+});
+
+const box = new Box();
+const app = box.get(appController);
 
 serve(app, { port: 3000 });
 ```

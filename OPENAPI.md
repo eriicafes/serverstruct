@@ -17,35 +17,30 @@ import { application, serve } from "serverstruct";
 import { z } from "zod";
 import {
   createDocument,
-  createRouter,
   jsonRequest,
   jsonResponse,
-  OpenApiPaths,
+  useRouter,
 } from "serverstruct/openapi";
 
-const app = application((app, box) => {
-  const paths = box.get(OpenApiPaths);
-  const router = createRouter(app, paths);
+const app = application((app) => {
+  const router = useRouter(app);
 
   router.post(
     "/posts",
     {
       operationId: "createPost",
-      requestBody: jsonRequest(
-        z.object({ title: z.string() }).meta({ description: "New post input" }),
-      ),
+      requestBody: jsonRequest(z.object({ title: z.string() })),
       responses: {
-        201: jsonResponse(
-          z.object({ id: z.string() }).meta({ description: "Created post" }),
-          { description: "Post created" },
-        ),
+        201: jsonResponse(z.object({ title: z.string() }), {
+          description: "Post created",
+        }),
       },
     },
     async (event, ctx) => {
       const body = await ctx.body(event);
       // body is typed as { title: string }
 
-      return ctx.reply(event, 201, { id: "1" });
+      return ctx.reply(event, 201, { title: body.title });
     },
   );
 
@@ -54,7 +49,7 @@ const app = application((app, box) => {
     createDocument({
       openapi: "3.1.0",
       info: { title: "My API", version: "1.0.0" },
-      paths: paths.paths,
+      paths: router.paths(),
     }),
   );
 });
@@ -62,64 +57,88 @@ const app = application((app, box) => {
 serve(app, { port: 3000 });
 ```
 
-## Use a Router
+## Router
 
-`OpenApiRouter` combines OpenAPI path registration with H3 route registration. The handler function receives the `RouterContext` as its second argument.
+`useRouter(app)` returns an `OpenApiRouter` that combines OpenAPI path registration with H3 route registration. Each method registers the operation on the OpenAPI paths and the handler on the H3 app simultaneously.
 
-```typescript
-const app = application((app, box) => {
-  const paths = box.get(OpenApiPaths);
-  const router = createRouter(app, paths);
+| Method                                  | Description                                       |
+| --------------------------------------- | ------------------------------------------------- |
+| `get(path, operation, handler)`         | Register a GET route                              |
+| `post(path, operation, handler)`        | Register a POST route                             |
+| `put(path, operation, handler)`         | Register a PUT route                              |
+| `delete(path, operation, handler)`      | Register a DELETE route                           |
+| `patch(path, operation, handler)`       | Register a PATCH route                            |
+| `all(path, operation, handler)`         | Register a route for all standard HTTP methods    |
+| `on(methods, path, operation, handler)` | Register a route for specific HTTP methods        |
+| `route(...routes)`                      | Register standalone [`Route`](#route) definitions |
+| `mount(base, sub)`                      | Mount a sub-app and include its OpenAPI paths     |
+| `paths()`                               | Return the accumulated OpenAPI paths object       |
 
-  router.get(
-    "/users/:id",
-    {
-      operationId: "getUser",
-      requestParams: {
-        path: z
-          .object({ id: z.string() })
-          .meta({ description: "User path parameters" }),
-      },
-      responses: {
-        200: jsonResponse(userSchema, {
-          description: "User found",
-          headers: z
-            .object({ "x-request-id": z.string() })
-            .meta({ description: "Response headers" }),
-        }),
-        404: jsonResponse(errorSchema, { description: "Not found" }),
-      },
-    },
-    async (event, ctx) => {
-      const params = await ctx.params(event);
-      const user = findUser(params.id);
-
-      if (!user) {
-        return ctx.reply(event, 404, { error: "not found" });
-      }
-
-      return ctx.reply(event, 200, user, {
-        "x-request-id": crypto.randomUUID(),
-      });
-      // data and headers are typed per status code
-    },
-  );
-});
-```
-
-## Use Routes
-
-`route()` creates a standalone route constructor. Each route defines its HTTP method, path, operation, and handler together.
+Use `router.mount()` to mount an app that has paths defined with `useRouter`.
 
 ```typescript
-import { application, serve } from "serverstruct";
+import { application, controller, serve } from "serverstruct";
 import { z } from "zod";
 import {
   createDocument,
   jsonRequest,
   jsonResponse,
-  OpenApiPaths,
+  useRouter,
+} from "serverstruct/openapi";
+
+const postsController = controller((app) => {
+  const router = useRouter(app);
+
+  router.post(
+    "/",
+    {
+      operationId: "createPost",
+      requestBody: jsonRequest(z.object({ title: z.string() })),
+      responses: {
+        201: jsonResponse(z.object({ title: z.string() }), {
+          description: "Post created",
+        }),
+      },
+    },
+    async (event, ctx) => {
+      const body = await ctx.body(event);
+      // body is typed as { title: string }
+
+      return ctx.reply(event, 201, { title: body.title });
+    },
+  );
+});
+
+const app = application((app, box) => {
+  const router = useRouter(app);
+
+  router.mount("/posts", box.get(postsController));
+
+  // Serve the OpenAPI document
+  app.get("/docs", () =>
+    createDocument({
+      openapi: "3.1.0",
+      info: { title: "My API", version: "1.0.0" },
+      paths: router.paths(),
+    }),
+  );
+});
+
+serve(app, { port: 3000 });
+```
+
+## Route
+
+`route()` creates a standalone route definition. Each route defines its HTTP method, path, operation, and handler together.
+
+```typescript
+import { application, serve } from "serverstruct";
+import { z } from "zod";
+import {
+  jsonRequest,
+  jsonResponse,
   route,
+  useRouter,
 } from "serverstruct/openapi";
 
 const getPost = route({
@@ -135,7 +154,7 @@ const getPost = route({
     },
   },
   setup(box) {
-    const db = box.get(Database);
+    const db = box.get(Database); // db from Box
     return async (event, ctx) => {
       const { id } = await ctx.params(event);
       return ctx.reply(event, 200, await db.findPost(id));
@@ -166,24 +185,20 @@ const createPost = route({
 });
 
 const app = application((app, box) => {
-  const paths = box.get(OpenApiPaths);
+  const router = useRouter(app);
 
   const getPostRoute = box.get(getPost);
   const createPostRoute = box.get(createPost);
 
-  // Register multiple routes at once
-  app.register(paths.routes(getPostRoute, createPostRoute));
-
-  // Or register individually
-  app.register(getPostRoute(paths));
+  router.route(getPostRoute, createPostRoute);
 });
 
 serve(app, { port: 3000 });
 ```
 
-## Route Context
+## Router Context
 
-Every operation registration returns a `RouterContext` with typed access to request data and helpers for sending responses.
+Every operation registration returns a `RouterContext` with typed request and response helpers.
 
 ### Schemas
 
@@ -246,53 +261,56 @@ return ctx.validReply(event, 201, { score: 85 });
 // Throws a 500 HTTPError if the response does not match the schema
 ```
 
-## Manually Register Paths
+## OpenApiPaths
 
-`OpenApiPaths` collects operation definitions for document generation. Register operations by HTTP method and use the returned `RouterContext` for typed request handling.
-
-Since `OpenApiPaths` is a class it can be used as a shared instance:
+`OpenApiPaths` collects operation definitions for document generation. Register operations by HTTP method and use the returned `RouterContext` for typed request handling. Use `mount()` to merge paths from another `OpenApiPaths` instance under a base prefix.
 
 ```typescript
-import {
-  getValidatedQuery,
-  getValidatedRouterParams,
-  readValidatedBody,
-} from "h3";
+import { createDocument, OpenApiPaths } from "serverstruct/openapi";
+import { getValidatedRouterParams } from "h3";
 
-const app = application((app, box) => {
-  const paths = box.get(OpenApiPaths);
+const usersPaths = new OpenApiPaths();
 
-  const getUser = paths.get("/users/{id}", {
-    operationId: "getUser",
-    requestParams: {
-      path: z
-        .object({ id: z.string() })
-        .meta({ description: "User path parameters" }),
+const getUser = usersPaths.get("/{id}", {
+  operationId: "getUser",
+  requestParams: {
+    path: z.object({ id: z.string() }),
+  },
+  responses: {
+    200: {
+      description: "User found",
+      content: { "application/json": { schema: userSchema } },
     },
-    responses: {
-      200: {
-        description: "User found",
-        content: { "application/json": { schema: userSchema } },
-      },
-    },
-  });
+  },
+});
 
+const paths = new OpenApiPaths();
+paths.mount("/users", usersPaths);
+// /users/{id} is now in paths
+
+const app = application((app) => {
   app.get("/users/:id", async (event) => {
     const params = await getValidatedRouterParams(
       event,
       getUser.schemas.params,
     );
-    const query = await getValidatedQuery(event, getUser.schemas.query);
-    const body = await readValidatedBody(event, getUser.schemas.body);
-    // getUser.schemas.headers and getUser.schemas.cookies are also available
     return getUser.reply(event, 200, { id: params.id, name: "Alice" });
   });
+
+  // Serve the OpenAPI document
+  app.get("/docs", () =>
+    createDocument({
+      openapi: "3.1.0",
+      info: { title: "My API", version: "1.0.0" },
+      paths: paths.paths,
+    }),
+  );
 });
 ```
 
 ## Path Conversion
 
-`OpenApiRouter` and `route()` both accept H3 path syntax and automatically convert it to OpenAPI format:
+`useRouter` and `route()` both accept H3 path syntax and automatically convert it to OpenAPI format:
 
 | H3       | OpenAPI    |
 | -------- | ---------- |
@@ -312,7 +330,7 @@ Build a `requestBody` object with `application/json` content:
 {
   operationId: "createPost",
   requestBody: jsonRequest(
-    z.object({ title: z.string() }).meta({ description: "New post input" }),
+    z.object({ title: z.string() }),
   ),
 }
 
@@ -320,7 +338,7 @@ Build a `requestBody` object with `application/json` content:
 {
   operationId: "createPost",
   requestBody: jsonRequest(
-    z.object({ title: z.string() }).meta({ description: "New post input" }),
+    z.object({ title: z.string() }),
     { description: "Create a post", content: { example: { title: "Hello" } } },
   ),
 }
@@ -345,7 +363,7 @@ Build a response object with `application/json` content and optional headers:
   responses: {
     200: jsonResponse(userSchema, {
       description: "User found",
-      headers: z.object({ "x-request-id": z.string() }).meta({ description: "Response headers" }),
+      headers: z.object({ "x-request-id": z.string() }),
     }),
   },
 }
@@ -374,8 +392,8 @@ const userSchema = z
 Use `createDocument` (re-exported from `zod-openapi`) with the accumulated paths:
 
 ```typescript
-const app = application((app, box) => {
-  const paths = box.get(OpenApiPaths);
+const app = application((app) => {
+  const router = useRouter(app);
 
   // ... register routes ...
 
@@ -383,7 +401,7 @@ const app = application((app, box) => {
     createDocument({
       openapi: "3.1.0",
       info: { title: "My API", version: "1.0.0" },
-      paths: paths.paths,
+      paths: router.paths(),
     }),
   );
 });
@@ -402,7 +420,7 @@ import { apiReference } from "serverstruct/openapi/scalar";
 
 app.get("/reference", () =>
   apiReference({
-    url: "http://localhost:5000/docs",
+    url: "http://localhost:3000/docs",
   }),
 );
 ```

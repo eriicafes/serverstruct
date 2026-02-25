@@ -2,13 +2,14 @@ import { Box } from "getbox";
 import { H3 } from "h3";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
+import { application, controller } from "../src";
 import {
-  createRouter,
   jsonRequest,
   jsonResponse,
   metadata,
   OpenApiPaths,
   route,
+  useRouter,
 } from "../src/openapi";
 
 /** Minimal valid operation object. */
@@ -101,6 +102,61 @@ describe("OpenApiPaths", () => {
       get: getOp,
       post: postOp,
     });
+  });
+
+  test("on() does not overwrite existing entry for same path and method", () => {
+    const paths = new OpenApiPaths();
+    const op1 = op("first");
+    const op2 = op("second");
+
+    paths.get("/users", op1);
+    paths.get("/users", op2);
+
+    expect(paths.paths["/users"]!.get).toBe(op1);
+  });
+
+  test("mount() adds multiple sub-paths with prefix", () => {
+    const parent = new OpenApiPaths();
+    const sub = new OpenApiPaths();
+
+    const listOp = op("listUsers");
+    const getOp = op("getUser");
+    sub.get("/", listOp);
+    sub.get("/{id}", getOp);
+
+    parent.mount("/users", sub);
+
+    expect(parent.paths["/users"]?.get?.operationId).toBe("listUsers");
+    expect(parent.paths["/users/{id}"]?.get?.operationId).toBe("getUser");
+  });
+
+  test("mount() does not overwrite existing paths", () => {
+    const parent = new OpenApiPaths();
+    const sub1 = new OpenApiPaths();
+    const sub2 = new OpenApiPaths();
+    const op1 = op("first");
+    const op2 = op("second");
+
+    sub1.get("/", op1);
+    sub2.get("/", op2);
+
+    parent.mount("/api", sub1);
+    parent.mount("/api", sub2);
+
+    expect(parent.paths["/api"]!.get).toBe(op1);
+  });
+
+  test("mount() strips trailing slash from prefix", () => {
+    const parent = new OpenApiPaths();
+    const sub = new OpenApiPaths();
+
+    sub.get("/", op("getRoot"));
+    sub.get("/items", op("getItems"));
+
+    parent.mount("/api/", sub);
+
+    expect(parent.paths["/api"]?.get?.operationId).toBe("getRoot");
+    expect(parent.paths["/api/items"]?.get?.operationId).toBe("getItems");
   });
 
   test("returns RouterContext with raw schemas", () => {
@@ -478,6 +534,29 @@ describe("RouterContext", () => {
     expect(invalidRes.status).toBe(500);
   });
 
+  test("validReply() returns coerced data from schema transform", async () => {
+    const paths = new OpenApiPaths();
+    const responseSchema = z.object({
+      score: z.number().transform((n) => Math.round(n)),
+    });
+
+    const ctx = paths.post("/scores", {
+      operationId: "createScore",
+      responses: {
+        201: jsonResponse(responseSchema, { description: "Created" }),
+      },
+    });
+
+    const app = new H3();
+    app.post("/scores", async (event) => {
+      return ctx.validReply(event, 201, { score: 85.7 });
+    });
+
+    const res = await app.request("/scores", { method: "POST" });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toStrictEqual({ score: 86 });
+  });
+
   test("validReply() validates response headers", async () => {
     const paths = new OpenApiPaths();
     const responseSchema = z.object({ id: z.string() });
@@ -528,15 +607,14 @@ describe("RouterContext", () => {
 describe("OpenApiRouter", () => {
   test("registers route on H3 app and path on OpenApiPaths", async () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     router.get("/users", op("getUsers"), () => {
       return { users: [] };
     });
 
-    expect(paths.paths["/users"]).toBeDefined();
-    expect(paths.paths["/users"]!.get).toStrictEqual(op("getUsers"));
+    expect(router.paths()["/users"]).toBeDefined();
+    expect(router.paths()["/users"]!.get).toStrictEqual(op("getUsers"));
 
     const res = await app.request("/users");
     expect(res.status).toBe(200);
@@ -545,8 +623,7 @@ describe("OpenApiRouter", () => {
 
   test("handler receives RouterContext", async () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
     const bodySchema = z.object({ title: z.string() });
 
     router.post(
@@ -577,22 +654,56 @@ describe("OpenApiRouter", () => {
 
   test("converts H3 path syntax to OpenAPI format", () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     router.get("/users/:id", op("getUser"), () => ({}));
     router.get("/files/*", op("getFile"), () => ({}));
     router.get("/docs/**", op("getDocs"), () => ({}));
 
-    expect(paths.paths["/users/{id}"]).toBeDefined();
-    expect(paths.paths["/files/{param}"]).toBeDefined();
-    expect(paths.paths["/docs/{path}"]).toBeDefined();
+    expect(router.paths()["/users/{id}"]).toBeDefined();
+    expect(router.paths()["/files/{param}"]).toBeDefined();
+    expect(router.paths()["/docs/{path}"]).toBeDefined();
+  });
+
+  test("converts multiple param segments to OpenAPI format", () => {
+    const app = new H3();
+    const router = useRouter(app);
+
+    router.get("/users/:userId/posts/:postId", op("getPost"), () => ({}));
+
+    expect(router.paths()["/users/{userId}/posts/{postId}"]).toBeDefined();
+  });
+
+  test("converts path without leading slash to OpenAPI format", () => {
+    const app = new H3();
+    const router = useRouter(app);
+
+    router.get("users/:id", op("getUser"), () => ({}));
+
+    expect(router.paths()["/users/{id}"]).toBeDefined();
+  });
+
+  test("mount() on sub-app without a router still mounts H3 routes", async () => {
+    const app = new H3();
+    const router = useRouter(app);
+
+    const subApp = new H3();
+    subApp.get("/ping", () => ({ pong: true }));
+
+    router.mount("/sub", subApp);
+
+    const res = await app.request("/sub/ping");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ pong: true });
+
+    // No paths transferred since sub has no router
+    expect(router.paths()["/sub/ping"]).toBeUndefined();
+    expect(router.paths()["/sub"]).toBeUndefined();
   });
 
   test("post() registers POST route", async () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     router.post("/items", op("createItem"), () => ({
       created: true,
@@ -605,8 +716,7 @@ describe("OpenApiRouter", () => {
 
   test("put() registers PUT route", async () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     router.put("/items/:id", op("updateItem"), () => ({
       updated: true,
@@ -619,8 +729,7 @@ describe("OpenApiRouter", () => {
 
   test("delete() registers DELETE route", async () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     router.delete("/items/:id", op("deleteItem"), () => ({
       deleted: true,
@@ -633,8 +742,7 @@ describe("OpenApiRouter", () => {
 
   test("patch() registers PATCH route", async () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     router.patch("/items/:id", op("patchItem"), () => ({
       patched: true,
@@ -647,8 +755,7 @@ describe("OpenApiRouter", () => {
 
   test("all() registers for all HTTP methods", async () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     router.all("/echo", op("echo"), () => ({ echo: true }));
 
@@ -657,7 +764,7 @@ describe("OpenApiRouter", () => {
       expect(res.status).toBe(200);
     }
 
-    const pathItem = paths.paths["/echo"];
+    const pathItem = router.paths()["/echo"];
     expect(pathItem?.get).toBeDefined();
     expect(pathItem?.post).toBeDefined();
     expect(pathItem?.put).toBeDefined();
@@ -667,8 +774,7 @@ describe("OpenApiRouter", () => {
 
   test("on() registers for specific methods", async () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     router.on(["get", "post"], "/items", op("items"), () => ({ ok: true }));
 
@@ -681,8 +787,7 @@ describe("OpenApiRouter", () => {
 
   test("methods return the router for chaining", () => {
     const app = new H3();
-    const paths = new OpenApiPaths();
-    const router = createRouter(app, paths);
+    const router = useRouter(app);
 
     const result = router
       .get("/a", op("a"), () => ({}))
@@ -693,9 +798,61 @@ describe("OpenApiRouter", () => {
 
     expect(result).toBe(router);
   });
+
+  test("multiple useRouter calls on the same app return the same router", async () => {
+    const app = new H3();
+    const router1 = useRouter(app);
+    const router2 = useRouter(app);
+
+    expect(router1).toBe(router2);
+
+    router1.get("/a", op("getA"), () => ({ from: "router1" }));
+    router2.get("/b", op("getB"), () => ({ from: "router2" }));
+
+    // Both H3 routes work
+    const resA = await app.request("/a");
+    expect(resA.status).toBe(200);
+    expect(await resA.json()).toStrictEqual({ from: "router1" });
+
+    const resB = await app.request("/b");
+    expect(resB.status).toBe(200);
+    expect(await resB.json()).toStrictEqual({ from: "router2" });
+
+    // Both paths visible on the same router instance
+    expect(router1.paths()["/a"]?.get?.operationId).toBe("getA");
+    expect(router1.paths()["/b"]?.get?.operationId).toBe("getB");
+  });
+
+  test("mounted apps apply base path", async () => {
+    const box = new Box();
+
+    const subApp = controller((app) => {
+      const router = useRouter(app);
+      router.get("/", op("getSub"), () => ({ id: "getSub" }));
+    });
+
+    let parentRouter!: ReturnType<typeof useRouter>;
+    const app = application((app, box) => {
+      parentRouter = useRouter(app);
+
+      parentRouter.get("/", op("getBase"), () => ({ id: "getBase" }));
+      parentRouter.mount("/sub", box.get(subApp));
+    }, box);
+
+    const res = await app.request("/");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ id: "getBase" });
+
+    const subRes = await app.request("/sub");
+    expect(subRes.status).toBe(200);
+    expect(await subRes.json()).toStrictEqual({ id: "getSub" });
+
+    expect(parentRouter.paths()["/"]?.get?.operationId).toBe("getBase");
+    expect(parentRouter.paths()["/sub"]?.get?.operationId).toBe("getSub");
+  });
 });
 
-describe("route", () => {
+describe("Route", () => {
   test("registers operation in paths and handler on app", async () => {
     const box = new Box();
     const app = new H3();
@@ -724,7 +881,12 @@ describe("route", () => {
     const paths = new OpenApiPaths();
 
     const mk = (path: string, operationId: string) =>
-      route({ method: "get", path, operation: op(operationId), setup: () => () => ({}) });
+      route({
+        method: "get",
+        path,
+        operation: op(operationId),
+        setup: () => () => ({}),
+      });
 
     app.register(box.get(mk("/users/:id", "getUser"))(paths));
     app.register(box.get(mk("/files/*", "getFile"))(paths));
@@ -750,7 +912,10 @@ describe("route", () => {
 
     app.register(box.get(items)(paths));
 
-    expect(paths.paths["/items"]).toStrictEqual({ get: operation, post: operation });
+    expect(paths.paths["/items"]).toStrictEqual({
+      get: operation,
+      post: operation,
+    });
 
     const getRes = await app.request("/items");
     expect(getRes.status).toBe(200);
@@ -842,8 +1007,18 @@ describe("route", () => {
     const op1 = op("getUser");
     const op2 = op("getUser");
 
-    const getUser1 = route({ method: "get", path: "/users/:id", operation: op1, setup: () => () => ({}) });
-    const getUser2 = route({ method: "get", path: "/users/:id", operation: op2, setup: () => () => ({}) });
+    const getUser1 = route({
+      method: "get",
+      path: "/users/:id",
+      operation: op1,
+      setup: () => () => ({}),
+    });
+    const getUser2 = route({
+      method: "get",
+      path: "/users/:id",
+      operation: op2,
+      setup: () => () => ({}),
+    });
 
     app.register(box.get(getUser1)(paths));
     app.register(box.get(getUser2)(paths));
@@ -873,11 +1048,11 @@ describe("route", () => {
     expect(await res.json()).toStrictEqual({ created: true });
   });
 
-  describe("paths.routes()", () => {
+  describe("router.route()", () => {
     test("registers multiple routes' operations in paths", () => {
       const box = new Box();
       const app = new H3();
-      const paths = new OpenApiPaths();
+      const router = useRouter(app);
       const getOp = op("getPost");
       const createOp = op("createPost");
 
@@ -894,16 +1069,16 @@ describe("route", () => {
         setup: () => () => ({}),
       });
 
-      app.register(paths.routes(box.get(getPost), box.get(createPost)));
+      router.route(box.get(getPost), box.get(createPost));
 
-      expect(paths.paths["/posts/{id}"]!.get).toBe(getOp);
-      expect(paths.paths["/posts"]!.post).toBe(createOp);
+      expect(router.paths()["/posts/{id}"]!.get).toBe(getOp);
+      expect(router.paths()["/posts"]!.post).toBe(createOp);
     });
 
     test("mounts all route handlers on the app", async () => {
       const box = new Box();
       const app = new H3();
-      const paths = new OpenApiPaths();
+      const router = useRouter(app);
 
       const getPost = route({
         method: "get",
@@ -918,7 +1093,7 @@ describe("route", () => {
         setup: () => () => ({ method: "post" }),
       });
 
-      app.register(paths.routes(box.get(getPost), box.get(createPost)));
+      router.route(box.get(getPost), box.get(createPost));
 
       const getRes = await app.request("/posts/1");
       expect(getRes.status).toBe(200);
@@ -932,7 +1107,7 @@ describe("route", () => {
     test("handlers receive RouterContext", async () => {
       const box = new Box();
       const app = new H3();
-      const paths = new OpenApiPaths();
+      const router = useRouter(app);
       const paramsSchema = z.object({ id: z.coerce.number() });
 
       const getPost = route({
@@ -949,11 +1124,40 @@ describe("route", () => {
         },
       });
 
-      app.register(paths.routes(box.get(getPost)));
+      router.route(box.get(getPost));
 
       const res = await app.request("/posts/42");
       expect(res.status).toBe(200);
       expect(await res.json()).toStrictEqual({ id: 42 });
+    });
+
+    test("registering the same route twice keeps first paths entry", async () => {
+      const box = new Box();
+      const app = new H3();
+      const router = useRouter(app);
+      const op1 = op("getPost1");
+      const op2 = op("getPost2");
+
+      const getPost1 = route({
+        method: "get",
+        path: "/posts/:id",
+        operation: op1,
+        setup: () => () => ({ op: 1 }),
+      });
+      const getPost2 = route({
+        method: "get",
+        path: "/posts/:id",
+        operation: op2,
+        setup: () => () => ({ op: 2 }),
+      });
+
+      router.route(box.get(getPost1), box.get(getPost2));
+
+      expect(router.paths()["/posts/{id}"]!.get).toBe(op1);
+
+      const res = await app.request("/posts/1");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toStrictEqual({ op: 1 });
     });
   });
 });

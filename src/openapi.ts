@@ -1,4 +1,4 @@
-import { Box, Constructor, transient } from "getbox";
+import { Box, Constructor, derive } from "getbox";
 import {
   definePlugin,
   getQuery,
@@ -397,19 +397,36 @@ export class OpenApiPaths {
   }
 
   /**
-   * Registers multiple routes' operations in `paths` and returns an {@link H3Plugin}
-   * that mounts all their handlers on the app when registered.
+   * Mount all paths from `sub` with a base prefix.
+   *
+   * Existing entries on the same path and method are not overwritten.
    *
    * @example
    * ```ts
-   * const getPost = route({ method: "get", path: "/posts/:id", ... });
-   * const createPost = route({ method: "post", path: "/posts", ... });
+   * const subPaths = new OpenApiPaths();
    *
-   * const getPostRoute = box.get(getPost);
-   * const createPostRoute = box.get(createPost);
+   * subPaths.get("/", { operationId: "getUsers", responses: {} });
    *
-   * app.register(paths.routes(getPostRoute, createPostRoute));
+   * const basePaths = new OpenApiPaths();
+   * basePaths.mount("/users", subPaths);
    * ```
+   */
+  mount(base: string, sub: OpenApiPaths): void {
+    if (base.endsWith("/")) base = base.slice(0, -1);
+    for (const [path, item] of Object.entries(sub.paths)) {
+      const fullPath = path === "/" ? base : base + path;
+      for (const [method, operation] of Object.entries(item)) {
+        this.on(
+          [method as HttpMethod],
+          fullPath,
+          operation as ZodOpenApiOperationObject,
+        );
+      }
+    }
+  }
+
+  /**
+   * @deprecated Use {@link OpenApiRouter.route} instead.
    */
   routes(...routes: Route<any>[]): H3Plugin {
     return definePlugin((app) => {
@@ -431,7 +448,7 @@ export class OpenApiPaths {
  *
  * @example
  * ```ts
- * const router = createRouter(app, box.get(OpenApiPaths));
+ * const router = useRouter(app);
  *
  * router.get("/posts/:id", {
  *   operationId: "getPost",
@@ -446,10 +463,25 @@ export class OpenApiPaths {
  * ```
  */
 export class OpenApiRouter {
+  private static key = Symbol("OpenApiRouter.key");
+
+  static from(app: H3): OpenApiRouter {
+    const existing = (app as any)[OpenApiRouter.key] as
+      | OpenApiRouter
+      | undefined;
+    const router = existing || new OpenApiRouter(app, new OpenApiPaths());
+    if (!existing) (app as any)[OpenApiRouter.key] = router;
+    return router;
+  }
+
   constructor(
-    protected app: H3,
-    protected paths: OpenApiPaths,
+    protected _app: H3,
+    protected _paths: OpenApiPaths,
   ) {}
+
+  paths() {
+    return this._paths.paths;
+  }
 
   /** Register a route and operation for the GET method. */
   get<T extends ZodOpenApiOperationObject>(
@@ -458,8 +490,8 @@ export class OpenApiRouter {
     handler: (event: H3Event, ctx: RouterContext<T>) => EventHandlerResponse,
     opts?: RouteOptions,
   ) {
-    const ctx = this.paths.get(toOpenApiPath(path), operation);
-    this.app.get(path, (event) => handler(event, ctx), opts);
+    const ctx = this._paths.get(toOpenApiPath(path), operation);
+    this._app.get(path, (event) => handler(event, ctx), opts);
     return this;
   }
 
@@ -470,8 +502,8 @@ export class OpenApiRouter {
     handler: (event: H3Event, ctx: RouterContext<T>) => EventHandlerResponse,
     opts?: RouteOptions,
   ) {
-    const ctx = this.paths.post(toOpenApiPath(path), operation);
-    this.app.post(path, (event) => handler(event, ctx), opts);
+    const ctx = this._paths.post(toOpenApiPath(path), operation);
+    this._app.post(path, (event) => handler(event, ctx), opts);
     return this;
   }
 
@@ -482,8 +514,8 @@ export class OpenApiRouter {
     handler: (event: H3Event, ctx: RouterContext<T>) => EventHandlerResponse,
     opts?: RouteOptions,
   ) {
-    const ctx = this.paths.put(toOpenApiPath(path), operation);
-    this.app.put(path, (event) => handler(event, ctx), opts);
+    const ctx = this._paths.put(toOpenApiPath(path), operation);
+    this._app.put(path, (event) => handler(event, ctx), opts);
     return this;
   }
 
@@ -494,8 +526,8 @@ export class OpenApiRouter {
     handler: (event: H3Event, ctx: RouterContext<T>) => EventHandlerResponse,
     opts?: RouteOptions,
   ) {
-    const ctx = this.paths.delete(toOpenApiPath(path), operation);
-    this.app.delete(path, (event) => handler(event, ctx), opts);
+    const ctx = this._paths.delete(toOpenApiPath(path), operation);
+    this._app.delete(path, (event) => handler(event, ctx), opts);
     return this;
   }
 
@@ -506,8 +538,8 @@ export class OpenApiRouter {
     handler: (event: H3Event, ctx: RouterContext<T>) => EventHandlerResponse,
     opts?: RouteOptions,
   ) {
-    const ctx = this.paths.patch(toOpenApiPath(path), operation);
-    this.app.patch(path, (event) => handler(event, ctx), opts);
+    const ctx = this._paths.patch(toOpenApiPath(path), operation);
+    this._app.patch(path, (event) => handler(event, ctx), opts);
     return this;
   }
 
@@ -518,8 +550,8 @@ export class OpenApiRouter {
     handler: (event: H3Event, ctx: RouterContext<T>) => EventHandlerResponse,
     opts?: RouteOptions,
   ) {
-    const ctx = this.paths.all(toOpenApiPath(path), operation);
-    this.app.all(path, (event) => handler(event, ctx), opts);
+    const ctx = this._paths.all(toOpenApiPath(path), operation);
+    this._app.all(path, (event) => handler(event, ctx), opts);
     return this;
   }
 
@@ -531,10 +563,30 @@ export class OpenApiRouter {
     handler: (event: H3Event, ctx: RouterContext<T>) => EventHandlerResponse,
     opts?: RouteOptions,
   ) {
-    const ctx = this.paths.on(methods, toOpenApiPath(path), operation);
+    const ctx = this._paths.on(methods, toOpenApiPath(path), operation);
     for (const method of methods) {
-      this.app.on(method, path, (event) => handler(event, ctx), opts);
+      this._app.on(method, path, (event) => handler(event, ctx), opts);
     }
+    return this;
+  }
+
+  /**
+   * Registers routes and operations for standalone {@link Route} definitions.
+   */
+  route(...routes: Route<any>[]): this {
+    for (const route of routes) {
+      this._app.register(route(this._paths));
+    }
+    return this;
+  }
+
+  /** Mounts a sub-app and adds all paths under the given base. */
+  mount(base: string, sub: H3): this {
+    const subRouter = (sub as any)[OpenApiRouter.key] as
+      | OpenApiRouter
+      | undefined;
+    this._app.mount(base, sub);
+    if (subRouter) this._paths.mount(base, subRouter._paths);
     return this;
   }
 }
@@ -543,12 +595,11 @@ export class OpenApiRouter {
  * Creates an {@link OpenApiRouter} that combines H3 route registration with OpenAPI path collection.
  *
  * @param app - H3 application instance.
- * @param paths - {@link OpenApiPaths} instance to collect operation definitions.
  * @returns An {@link OpenApiRouter} instance.
  *
  * @example
  * ```ts
- * const router = createRouter(app, box.get(OpenApiPaths));
+ * const router = useRouter(app);
  *
  * router.get("/posts/:id", {
  *   operationId: "getPost",
@@ -559,7 +610,15 @@ export class OpenApiRouter {
  * });
  * ```
  */
-export function createRouter(app: H3, paths: OpenApiPaths) {
+export function useRouter(app: H3) {
+  return OpenApiRouter.from(app);
+}
+
+/** @deprecated Use {@link useRouter} instead. */
+export function createRouter(
+  app: H3,
+  paths: OpenApiPaths = new OpenApiPaths(),
+) {
   return new OpenApiRouter(app, paths);
 }
 
@@ -592,11 +651,8 @@ export function createRouter(app: H3, paths: OpenApiPaths) {
  *
  * const getPostRoute = box.get(getPost);
  *
- * // Register a single route
- * app.register(getPostRoute(paths));
- *
- * // Or register multiple routes at once
- * app.register(paths.routes(getPostRoute, createPostRoute));
+ * const router = useRouter(app);
+ * router.route(getPostRoute);
  * ```
  */
 export function route<T extends ZodOpenApiOperationObject>(options: {
@@ -615,7 +671,7 @@ export function route<T extends ZodOpenApiOperationObject>(options: {
         }
       >;
 }): Constructor<Route<T>> {
-  return transient((box) => {
+  return derive((box) => {
     const { method, path, operation, setup } = options;
     const methods = typeof method === "string" ? [method] : method;
     const res = setup(box);
