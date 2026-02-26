@@ -1,4 +1,4 @@
-import { Box, Constructor, derive } from "getbox";
+import { Box, computed, Constructor } from "getbox";
 import {
   definePlugin,
   getQuery,
@@ -424,17 +424,6 @@ export class OpenApiPaths {
       }
     }
   }
-
-  /**
-   * @deprecated Use {@link OpenApiRouter.route} instead.
-   */
-  routes(...routes: Route<any>[]): H3Plugin {
-    return definePlugin((app) => {
-      for (const route of routes) {
-        app.register(route(this));
-      }
-    })();
-  }
 }
 
 // ---- OpenApiRouter ----
@@ -474,7 +463,7 @@ export class OpenApiRouter {
     return router;
   }
 
-  constructor(
+  private constructor(
     protected _app: H3,
     protected _paths: OpenApiPaths,
   ) {}
@@ -614,14 +603,6 @@ export function useRouter(app: H3) {
   return OpenApiRouter.from(app);
 }
 
-/** @deprecated Use {@link useRouter} instead. */
-export function createRouter(
-  app: H3,
-  paths: OpenApiPaths = new OpenApiPaths(),
-) {
-  return new OpenApiRouter(app, paths);
-}
-
 /**
  * Creates a Route constructor.
  *
@@ -671,7 +652,7 @@ export function route<T extends ZodOpenApiOperationObject>(options: {
         }
       >;
 }): Constructor<Route<T>> {
-  return derive((box) => {
+  return computed((box) => {
     const { method, path, operation, setup } = options;
     const methods = typeof method === "string" ? [method] : method;
     const res = setup(box);

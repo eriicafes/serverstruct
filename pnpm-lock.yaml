@@ -18,8 +18,8 @@ importers:
         specifier: '>=0.3.37'
         version: 0.3.37
       getbox:
-        specifier: '>=1.4.0 <2.0.0'
-        version: 1.4.0
+        specifier: '>=2.0.0 <3.0.0'
+        version: 2.0.0
       h3:
         specifier: '>=2.0.1-rc.6 <3.0.0'
         version: 2.0.1-rc.6
@@ -799,8 +799,8 @@ packages:
   get-tsconfig@4.13.0:
     resolution: {integrity: sha512-1VKTZJCwBrvbd+Wn3AOgQP/2Av+TfTCOlE4AcRJE72W1ksZXbAx8PPBR9RzgTeSPzlPMHrbANMH3LbltH73wxQ==}
 
-  getbox@1.4.0:
-    resolution: {integrity: sha512-Y9/EaG3Cp6oNvMgGlGLfmNaT9ExcJ9Bab9zObceqbuKS68fsjBpfOaeYTB3EqEN+Ey3sq1zCI6GZPkIYNGhKTA==}
+  getbox@2.0.0:
+    resolution: {integrity: sha512-ly6WamvKQRnF45cPA39yFwjNAIkJjOT1DT9XtqvcY2NCe6XHlYvUkftGaNXoE2ve9GupBJnAPYM0TTcuNvSxDQ==}
 
   glob-parent@5.1.2:
     resolution: {integrity: sha512-AOIgSQCepiJYwP3ARnGx+5VnTu2HBYdzbGP45eLw1vr3zB3vZLeyed1sC9hnbcOc9/SrMyM5RPQrkGz4aS9Zow==}
@@ -2039,7 +2039,7 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
-  getbox@1.4.0: {}
+  getbox@2.0.0: {}
 
   glob-parent@5.1.2:
     dependencies:

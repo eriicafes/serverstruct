@@ -1,4 +1,4 @@
-import { Box, Constructor, derive } from "getbox";
+import { Box, Constructor, computed } from "getbox";
 import {
   defineHandler,
   defineMiddleware,
@@ -86,7 +86,7 @@ export function application(
 export function controller(
   setup: (app: H3, box: Box) => H3 | void,
 ): Constructor<H3> {
-  return derive((box) => application(setup, box));
+  return computed((box) => application(setup, box));
 }
 
 /**
@@ -120,7 +120,7 @@ export function handler<
   Res = unknown,
   Req extends EventHandlerRequest = EventHandlerRequest,
 >(setup: (event: H3Event<Req>, box: Box) => Res) {
-  return derive((box) => defineHandler<Req, Res>((event) => setup(event, box)));
+  return computed((box) => defineHandler<Req, Res>((event) => setup(event, box)));
 }
 
 /**
@@ -157,7 +157,7 @@ export function eventHandler<
   Res = unknown,
   Req extends EventHandlerRequest = EventHandlerRequest,
 >(setup: (box: Box) => EventHandlerObject<Req, Res>) {
-  return derive((box) => defineHandler<Req, Res>(setup(box)));
+  return computed((box) => defineHandler<Req, Res>(setup(box)));
 }
 
 /**
@@ -197,7 +197,7 @@ export function middleware(
     box: Box,
   ) => MaybePromise<unknown | undefined>,
 ): Constructor<Middleware> {
-  return derive((box) =>
+  return computed((box) =>
     defineMiddleware((event, next) => setup(event, next, box)),
   );
 }
