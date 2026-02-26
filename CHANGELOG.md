@@ -1,5 +1,13 @@
 # serverstruct
 
+## 2.0.0
+
+### Major Changes
+
+- 3aadc73: Remove deprecated OpenApiPaths.routes() — use router.route() instead
+- 3aadc73: Remove deprecated createRouter — use useRouter instead
+- 3aadc73: Upgrade to getbox@v2
+
 ## 1.4.0
 
 ### Minor Changes
