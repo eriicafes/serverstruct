@@ -115,7 +115,7 @@ describe("OpenApiPaths", () => {
     expect(paths.paths["/users"]!.get).toBe(op1);
   });
 
-  test("mount() adds multiple sub-paths with prefix", () => {
+  test("mount() adds sub-paths with prefix", () => {
     const parent = new OpenApiPaths();
     const sub = new OpenApiPaths();
 
@@ -621,6 +621,30 @@ describe("OpenApiRouter", () => {
     expect(await res.json()).toStrictEqual({ users: [] });
   });
 
+  test("multiple useRouter calls on the same app return the same router", async () => {
+    const app = new H3();
+    const router1 = useRouter(app);
+    const router2 = useRouter(app);
+
+    expect(router1).toBe(router2);
+
+    router1.get("/a", op("getA"), () => ({ from: "router1" }));
+    router2.get("/b", op("getB"), () => ({ from: "router2" }));
+
+    // Both H3 routes work
+    const resA = await app.request("/a");
+    expect(resA.status).toBe(200);
+    expect(await resA.json()).toStrictEqual({ from: "router1" });
+
+    const resB = await app.request("/b");
+    expect(resB.status).toBe(200);
+    expect(await resB.json()).toStrictEqual({ from: "router2" });
+
+    // Both paths visible on the same router instance
+    expect(router1.paths()["/a"]?.get?.operationId).toBe("getA");
+    expect(router1.paths()["/b"]?.get?.operationId).toBe("getB");
+  });
+
   test("handler receives RouterContext", async () => {
     const app = new H3();
     const router = useRouter(app);
@@ -681,24 +705,6 @@ describe("OpenApiRouter", () => {
     router.get("users/:id", op("getUser"), () => ({}));
 
     expect(router.paths()["/users/{id}"]).toBeDefined();
-  });
-
-  test("mount() on sub-app without a router still mounts H3 routes", async () => {
-    const app = new H3();
-    const router = useRouter(app);
-
-    const subApp = new H3();
-    subApp.get("/ping", () => ({ pong: true }));
-
-    router.mount("/sub", subApp);
-
-    const res = await app.request("/sub/ping");
-    expect(res.status).toBe(200);
-    expect(await res.json()).toStrictEqual({ pong: true });
-
-    // No paths transferred since sub has no router
-    expect(router.paths()["/sub/ping"]).toBeUndefined();
-    expect(router.paths()["/sub"]).toBeUndefined();
   });
 
   test("post() registers POST route", async () => {
@@ -785,31 +791,25 @@ describe("OpenApiRouter", () => {
     expect(postRes.status).toBe(200);
   });
 
-  test("multiple useRouter calls on the same app return the same router", async () => {
+  test("mount() on sub-app without a router still mounts H3 routes", async () => {
     const app = new H3();
-    const router1 = useRouter(app);
-    const router2 = useRouter(app);
+    const router = useRouter(app);
 
-    expect(router1).toBe(router2);
+    const subApp = new H3();
+    subApp.get("/ping", () => ({ pong: true }));
 
-    router1.get("/a", op("getA"), () => ({ from: "router1" }));
-    router2.get("/b", op("getB"), () => ({ from: "router2" }));
+    router.mount("/sub", subApp);
 
-    // Both H3 routes work
-    const resA = await app.request("/a");
-    expect(resA.status).toBe(200);
-    expect(await resA.json()).toStrictEqual({ from: "router1" });
+    const res = await app.request("/sub/ping");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ pong: true });
 
-    const resB = await app.request("/b");
-    expect(resB.status).toBe(200);
-    expect(await resB.json()).toStrictEqual({ from: "router2" });
-
-    // Both paths visible on the same router instance
-    expect(router1.paths()["/a"]?.get?.operationId).toBe("getA");
-    expect(router1.paths()["/b"]?.get?.operationId).toBe("getB");
+    // No paths transferred since sub has no router
+    expect(router.paths()["/sub/ping"]).toBeUndefined();
+    expect(router.paths()["/sub"]).toBeUndefined();
   });
 
-  test("mounted apps apply base path", async () => {
+  test("mount() mounts sub-app with base prefix", async () => {
     const box = new Box();
 
     const subApp = controller((app) => {
@@ -817,13 +817,12 @@ describe("OpenApiRouter", () => {
       router.get("/", op("getSub"), () => ({ id: "getSub" }));
     });
 
-    let parentRouter!: ReturnType<typeof useRouter>;
     const app = application((app, box) => {
-      parentRouter = useRouter(app);
-
-      parentRouter.get("/", op("getBase"), () => ({ id: "getBase" }));
-      parentRouter.mount("/sub", box.get(subApp));
+      const router = useRouter(app);
+      router.get("/", op("getBase"), () => ({ id: "getBase" }));
+      router.mount("/sub", box.get(subApp));
     }, box);
+    const router = useRouter(app);
 
     const res = await app.request("/");
     expect(res.status).toBe(200);
@@ -833,8 +832,44 @@ describe("OpenApiRouter", () => {
     expect(subRes.status).toBe(200);
     expect(await subRes.json()).toStrictEqual({ id: "getSub" });
 
-    expect(parentRouter.paths()["/"]?.get?.operationId).toBe("getBase");
-    expect(parentRouter.paths()["/sub"]?.get?.operationId).toBe("getSub");
+    expect(router.paths()["/"]?.get?.operationId).toBe("getBase");
+    expect(router.paths()["/sub"]?.get?.operationId).toBe("getSub");
+  });
+
+  test("mount() mounts multiple sub-apps with their respective base paths", async () => {});
+
+  test("mount() mounts multiple sub-apps with their respective base paths using box", async () => {
+    const box = new Box();
+
+    const users = controller((app) => {
+      const router = useRouter(app);
+      router.get("/", op("getUsers"), () => ({ id: "getUsers" }));
+    });
+
+    const posts = controller((app) => {
+      const router = useRouter(app);
+      router.get("/", op("getPosts"), () => ({ id: "getPosts" }));
+    });
+
+    const app = application((app, box) => {
+      const router = useRouter(app);
+      router.mount(box, {
+        "/users": users,
+        "/posts": posts,
+      });
+    }, box);
+    const router = useRouter(app);
+
+    const usersRes = await app.request("/users");
+    expect(usersRes.status).toBe(200);
+    expect(await usersRes.json()).toStrictEqual({ id: "getUsers" });
+
+    const postsRes = await app.request("/posts");
+    expect(postsRes.status).toBe(200);
+    expect(await postsRes.json()).toStrictEqual({ id: "getPosts" });
+
+    expect(router.paths()["/users"]?.get?.operationId).toBe("getUsers");
+    expect(router.paths()["/posts"]?.get?.operationId).toBe("getPosts");
   });
 
   test("document() serves the OpenAPI document at path", async () => {

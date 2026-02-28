@@ -63,7 +63,7 @@ const app = application((app) => {
 serve(app, { port: 3000 });
 ```
 
-When an app is mounted, its middlewares and routes are copied to the main app in place with middlewares scoped to its base path.
+When mounting a sub-app, all routes will be added with base prefix and global middleware will be added as one prefixed middleware.
 
 Both `application()` and `controller()` can return a custom H3 instance:
 
@@ -80,6 +80,8 @@ const customApp = application(() => {
   return app;
 });
 ```
+
+**Note:** Sub-app options and global hooks are not inherited when mounted consider setting them in the main app directly.
 
 ## Controllers
 

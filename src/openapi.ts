@@ -573,13 +573,41 @@ export class OpenApiRouter {
     return this;
   }
 
-  /** Mounts a sub-app and adds all paths under the given base. */
-  mount(base: string, sub: H3): this {
-    const subRouter = (sub as any)[OpenApiRouter.key] as
-      | OpenApiRouter
-      | undefined;
-    this._app.mount(base, sub);
-    if (subRouter) this._paths.mount(base, subRouter._paths);
+  /**
+   * Mounts a sub-app and adds all paths with a base prefix.
+   *
+   * When mounting a sub-app, all routes will be added with base prefix and global middleware will be added as one prefixed middleware.
+   *
+   * **Note:** Sub-app options and global hooks are not inherited when mounted consider setting them in the main app directly.
+   */
+  mount(base: string, sub: H3): this;
+  /**
+   * Mounts sub-apps resolved from a {@link Box} under their respective base prefixes.
+   *
+   * When mounting a sub-app, all routes will be added with base prefix and global middleware will be added as one prefixed middleware.
+   *
+   * **Note:** Sub-app options and global hooks are not inherited when mounted consider setting them in the main app directly.
+   */
+  mount(box: Box, routes: Record<string, Constructor<H3>>): this;
+  mount(arg1: string | Box, arg2: H3 | Record<string, Constructor<H3>>): this {
+    if (typeof arg1 === "string") {
+      const subRouter = (arg2 as any)[OpenApiRouter.key] as
+        | OpenApiRouter
+        | undefined;
+      this._app.mount(arg1, arg2 as H3);
+      if (subRouter) this._paths.mount(arg1, subRouter._paths);
+    } else {
+      for (const [base, ctor] of Object.entries(
+        arg2 as Record<string, Constructor<H3>>,
+      )) {
+        const sub = arg1.get(ctor);
+        const subRouter = (sub as any)[OpenApiRouter.key] as
+          | OpenApiRouter
+          | undefined;
+        this._app.mount(base, sub);
+        if (subRouter) this._paths.mount(base, subRouter._paths);
+      }
+    }
     return this;
   }
 
@@ -642,6 +670,8 @@ export interface RouterReferenceOptions {
 
 /**
  * Creates an {@link OpenApiRouter} that combines H3 route registration with OpenAPI path collection.
+ *
+ * Multiple calls on the same app return the same instance.
  *
  * @param app - H3 application instance.
  * @returns An {@link OpenApiRouter} instance.

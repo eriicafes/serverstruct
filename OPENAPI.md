@@ -99,7 +99,13 @@ const postsController = controller((app) => {
 const app = application((app, box) => {
   const router = useRouter(app);
 
+  // mount sub-app
   router.mount("/posts", box.get(postsController));
+
+  // or mount multiple at once
+  router.mount(box, {
+    "/posts": postsController,
+  });
 
   router.document("/docs", {
     openapi: "3.1.0",
