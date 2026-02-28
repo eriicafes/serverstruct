@@ -1,5 +1,11 @@
 # serverstruct
 
+## 2.2.0
+
+### Minor Changes
+
+- 8687fd7: Support `router.mount()` mounting multiple sub-apps at once using box
+
 ## 2.1.0
 
 ### Minor Changes
