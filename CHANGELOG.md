@@ -1,5 +1,11 @@
 # serverstruct
 
+## 2.1.0
+
+### Minor Changes
+
+- 45cd71f: Add `router.document()` for serving OpenAPI docs
+
 ## 2.0.0
 
 ### Major Changes
