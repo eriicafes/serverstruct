@@ -216,6 +216,8 @@ ctx.schemas.body; // requestBody application/json schema
 
 `ctx.params()`, `ctx.query()`, and `ctx.body()` validate and parse incoming request data using the operation's schemas. When no schema is defined they return the raw value.
 
+A validation failure throws an `HTTPError` with status 400.
+
 ```typescript
 router.post(
   "/posts/:id/comments",
@@ -223,51 +225,45 @@ router.post(
     operationId: "createComment",
     requestParams: {
       path: z.object({ id: z.coerce.number() }),
-      query: z.object({ draft: z.coerce.boolean().optional() }),
     },
     requestBody: jsonRequest(z.object({ text: z.string().min(1) })),
-    responses: { 201: jsonResponse(commentSchema, { description: "Created" }) },
+    responses: {
+      201: jsonResponse(z.object({ id: z.number(), text: z.string().min(1) }), {
+        description: "Created",
+      }),
+    },
   },
   async (event, ctx) => {
     const { id } = await ctx.params(event); // { id: number }
-    const { draft } = await ctx.query(event); // { draft?: boolean }
     const body = await ctx.body(event); // { text: string }
 
-    return ctx.reply(event, 201, await db.createComment(id, body, draft));
+    return ctx.reply(event, 201, await db.createComment(id, body));
   },
 );
 ```
-
-A validation failure throws an `HTTPError` with status 400.
 
 ### Response Validation
 
 `ctx.reply()` sets the response status and optional headers and returns typed response data. Types are inferred per status code from the operation's `responses` but not validated at runtime.
 
 ```typescript
-return ctx.reply(event, 200, { id: "1", name: "Alice" });
-return ctx.reply(
-  event,
-  200,
-  { id: "1", name: "Alice" },
-  { "x-request-id": "abc" },
-);
+return ctx.reply(event, 201, { id: 1, text: "" });
+// text fails z.string().min(1) but passes silently
 ```
 
 `ctx.validReply()` works the same way but also validates the response body and headers against their schemas at runtime.
 
 ```typescript
-return ctx.validReply(event, 201, { score: 85 });
-// Throws a 500 HTTPError if the response does not match the schema
+return ctx.validReply(event, 201, { id: 1, text: "" });
+// Throws a 500 HTTPError
 ```
 
 ## OpenApiPaths
 
-`OpenApiPaths` collects operation definitions for document generation. Register operations by HTTP method and use the returned `RouterContext` for typed request handling. Use `mount()` to merge paths from another `OpenApiPaths` instance under a base prefix.
+`OpenApiPaths` is used internally by `OpenApiRouter`. It can also be used directly for lower-level control. Register operations by HTTP method and use the returned `RouterContext` for typed request handling. Use `mount()` to merge paths from another `OpenApiPaths` instance under a base prefix.
 
 ```typescript
 import { createDocument, OpenApiPaths } from "serverstruct/openapi";
-import { getValidatedRouterParams } from "h3";
 
 const usersPaths = new OpenApiPaths();
 
@@ -290,11 +286,8 @@ paths.mount("/users", usersPaths);
 
 const app = application((app) => {
   app.get("/users/:id", async (event) => {
-    const params = await getValidatedRouterParams(
-      event,
-      getUser.schemas.params,
-    );
-    return getUser.reply(event, 200, { id: params.id, name: "Alice" });
+    const { id } = await getUser.params(event);
+    return getUser.reply(event, 200, { id, name: "Alice" });
   });
 
   // Serve the OpenAPI document
@@ -329,9 +322,7 @@ Build a `requestBody` object with `application/json` content:
 ```typescript
 {
   operationId: "createPost",
-  requestBody: jsonRequest(
-    z.object({ title: z.string() }),
-  ),
+  requestBody: jsonRequest(z.object({ title: z.string() })),
 }
 
 // With additional options
@@ -339,7 +330,10 @@ Build a `requestBody` object with `application/json` content:
   operationId: "createPost",
   requestBody: jsonRequest(
     z.object({ title: z.string() }),
-    { description: "Create a post", content: { example: { title: "Hello" } } },
+    {
+      description: "Create a post",
+      content: { example: { title: "Hello" } },
+    },
   ),
 }
 ```
@@ -371,21 +365,21 @@ Build a response object with `application/json` content and optional headers:
 
 ### metadata
 
-Zod's `.meta()` should accept `ZodOpenApiMetadata` directly, but if type inference is not working correctly you can use the `metadata` helper to ensure the correct type:
+zod-openapi provides OpenAPI types for the `.meta()` method when importing from `"zod/v4"`. Use the `metadata` helper to get the same options:
 
 ```typescript
-const userSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-  })
-  .meta(
-    metadata({
-      description: "A user object",
-      example: { id: "1", name: "Alice" },
-    }),
-  );
+import { z } from "zod";
+import { metadata } from "serverstruct/openapi";
+
+const userSchema = z.object({ id: z.string(), name: z.string() }).meta(
+  metadata({
+    description: "A user object",
+    example: { id: "1", name: "Alice" },
+  }),
+);
 ```
+
+See [zod-openapi](https://github.com/samchungy/zod-openapi) for available metadata options.
 
 ## Generating the Document
 

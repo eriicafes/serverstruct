@@ -322,8 +322,7 @@ type HttpMethod = (typeof HTTP_METHODS)[number];
  *
  * @example
  * ```ts
- * // Singleton via getbox
- * const paths = box.get(OpenApiPaths);
+ * const paths = new OpenApiPaths();
  *
  * const getPost = paths.get("/posts/{id}", { ... });
  *
@@ -332,6 +331,7 @@ type HttpMethod = (typeof HTTP_METHODS)[number];
  * ```
  */
 export class OpenApiPaths {
+  /** Accumulated OpenAPI paths object. */
   public paths: ZodOpenApiPathsObject = {};
 
   /** Register an operation for the GET method. */
@@ -454,6 +454,10 @@ export class OpenApiPaths {
 export class OpenApiRouter {
   private static key = Symbol("OpenApiRouter.key");
 
+  /**
+   * Returns the existing router for `app`, or creates and attaches a new one.
+   * Multiple calls on the same app return the same instance.
+   */
   static from(app: H3): OpenApiRouter {
     const existing = (app as any)[OpenApiRouter.key] as
       | OpenApiRouter
@@ -468,6 +472,7 @@ export class OpenApiRouter {
     protected _paths: OpenApiPaths,
   ) {}
 
+  /** Returns the accumulated OpenAPI paths object. */
   paths() {
     return this._paths.paths;
   }

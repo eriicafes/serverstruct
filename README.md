@@ -237,11 +237,11 @@ const app = application((app, box) => {
 To catch not found routes, define a catch-all handler and return the desired error:
 
 ```typescript
-import { H3Error } from "h3";
+import { HTTPError } from "h3";
 
 const app = application((app) => {
   app.get("/", () => "Hello world!");
-  app.all("**", () => new H3Error({ status: 404, message: "Not found" }));
+  app.all("**", () => new HTTPError({ status: 404, message: "Not found" }));
 });
 ```
 
@@ -252,13 +252,13 @@ const usersApp = application((app) => {
   app.get("/", () => ["Alice", "Bob"]);
   app.all(
     "**",
-    () => new H3Error({ status: 404, message: "User route not found" }),
+    () => new HTTPError({ status: 404, message: "User route not found" }),
   );
 });
 
 const app = application((app) => {
   app.mount("/users", usersApp);
-  app.all("**", () => new H3Error({ status: 404, message: "Not found" }));
+  app.all("**", () => new HTTPError({ status: 404, message: "Not found" }));
 });
 ```
 
