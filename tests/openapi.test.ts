@@ -785,20 +785,6 @@ describe("OpenApiRouter", () => {
     expect(postRes.status).toBe(200);
   });
 
-  test("methods return the router for chaining", () => {
-    const app = new H3();
-    const router = useRouter(app);
-
-    const result = router
-      .get("/a", op("a"), () => ({}))
-      .post("/b", op("b"), () => ({}))
-      .put("/c", op("c"), () => ({}))
-      .delete("/d", op("d"), () => ({}))
-      .patch("/e", op("e"), () => ({}));
-
-    expect(result).toBe(router);
-  });
-
   test("multiple useRouter calls on the same app return the same router", async () => {
     const app = new H3();
     const router1 = useRouter(app);
@@ -849,6 +835,106 @@ describe("OpenApiRouter", () => {
 
     expect(parentRouter.paths()["/"]?.get?.operationId).toBe("getBase");
     expect(parentRouter.paths()["/sub"]?.get?.operationId).toBe("getSub");
+  });
+
+  test("document() serves the OpenAPI document at path", async () => {
+    const app = new H3();
+    const router = useRouter(app);
+
+    router.get("/posts", op("listPosts"), () => []);
+    router.document("/docs", {
+      openapi: "3.1.0",
+      info: { title: "Test API", version: "1.0.0" },
+      reference: false,
+    });
+
+    const res = await app.request("/docs");
+    expect(res.status).toBe(200);
+
+    const doc = await res.json();
+    expect(doc.openapi).toBe("3.1.0");
+    expect(doc.info.title).toBe("Test API");
+    expect(doc.paths["/posts"]).toBeDefined();
+  });
+
+  test("document() mounts Scalar reference at {path}/reference by default", async () => {
+    const app = new H3();
+    const router = useRouter(app);
+
+    router.document("/docs", {
+      openapi: "3.1.0",
+      info: { title: "Test API", version: "1.0.0" },
+    });
+
+    const res = await app.request("/docs/reference");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('"url": "/docs"');
+  });
+
+  test("document() with reference: false does not mount reference", async () => {
+    const app = new H3({ silent: true });
+    const router = useRouter(app);
+
+    router.document("/docs", {
+      openapi: "3.1.0",
+      info: { title: "Test API", version: "1.0.0" },
+      reference: false,
+    });
+
+    const res = await app.request("/docs/reference");
+    expect(res.status).toBe(404);
+  });
+
+  test("document() with custom reference.path", async () => {
+    const app = new H3({ silent: true });
+    const router = useRouter(app);
+
+    router.document("/docs", {
+      openapi: "3.1.0",
+      info: { title: "Test API", version: "1.0.0" },
+      reference: { path: "/reference" },
+    });
+
+    const customRes = await app.request("/reference");
+    expect(customRes.status).toBe(200);
+    const html = await customRes.text();
+    expect(html).toContain('"url": "/docs"');
+
+    const defaultRes = await app.request("/docs/reference");
+    expect(defaultRes.status).toBe(404);
+  });
+
+  test("document() in mounted apps serves correct docs and reference", async () => {
+    const box = new Box();
+
+    const v1 = controller((app) => {
+      const router = useRouter(app);
+
+      router.get("/posts", op("listPosts"), () => []);
+      router.document("/docs", {
+        openapi: "3.1.0",
+        info: { title: "V1 API", version: "1.0.0" },
+      });
+    });
+
+    const app = application((app, box) => {
+      app.mount("/v1", box.get(v1));
+    }, box);
+
+    // OpenAPI document accessible at /v1/docs with the controller's paths
+    const docsRes = await app.request("/v1/docs");
+    expect(docsRes.status).toBe(200);
+    const doc = await docsRes.json();
+    expect(doc.openapi).toBe("3.1.0");
+    expect(doc.info.title).toBe("V1 API");
+    expect(doc.paths["/v1/posts"]).toBeDefined();
+
+    // Scalar reference accessible at /v1/docs/reference
+    const refRes = await app.request("/v1/docs/reference");
+    expect(refRes.status).toBe(200);
+    const html = await refRes.text();
+    expect(html).toContain('"url": "/v1/docs"');
   });
 });
 

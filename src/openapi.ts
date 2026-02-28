@@ -16,14 +16,18 @@ import {
 } from "h3";
 import { safeParse, ZodError, type output } from "zod";
 import type {
+  CreateDocumentOptions,
   ZodOpenApiMediaTypeObject,
   ZodOpenApiMetadata,
+  ZodOpenApiObject,
   ZodOpenApiOperationObject,
   ZodOpenApiPathsObject,
   ZodOpenApiRequestBodyObject,
   ZodOpenApiResponseObject,
 } from "zod-openapi";
+import { createDocument } from "zod-openapi";
 import { isAnyZodType } from "zod-openapi/api";
+import { apiReference, type ApiReferenceConfiguration } from "./openapi.scalar";
 
 export {
   createDocument,
@@ -472,11 +476,6 @@ export class OpenApiRouter {
     protected _paths: OpenApiPaths,
   ) {}
 
-  /** Returns the accumulated OpenAPI paths object. */
-  paths() {
-    return this._paths.paths;
-  }
-
   /** Register a route and operation for the GET method. */
   get<T extends ZodOpenApiOperationObject>(
     path: string,
@@ -583,6 +582,62 @@ export class OpenApiRouter {
     if (subRouter) this._paths.mount(base, subRouter._paths);
     return this;
   }
+
+  /** Returns the accumulated OpenAPI paths object. */
+  paths() {
+    return this._paths.paths;
+  }
+
+  /**
+   * Mounts a handler at `path` that serves the OpenAPI document.
+   * Also mounts a Scalar API reference UI at `{path}/reference` by default.
+   * Pass `reference: false` to disable, or provide options to configure it.
+   */
+  document(path: string, options: RouterDocumentOptions): this {
+    if (!path.startsWith("/")) path = "/" + path;
+    const { reference, options: docOptions, ...zodOpenApiObject } = options;
+
+    this._app.get(path, (event) => {
+      const base = event.url.pathname.slice(0, -path.length);
+      const paths = base
+        ? Object.fromEntries(
+            Object.entries(this._paths.paths).map(([path, item]) => [
+              `${base}${path}`,
+              item,
+            ]),
+          )
+        : this._paths.paths;
+      return createDocument({ ...zodOpenApiObject, paths }, docOptions);
+    });
+
+    if (reference !== false) {
+      const refPath = reference?.path || `${path}/reference`;
+      this._app.get(refPath, (event) => {
+        const base = event.url.pathname.slice(0, -refPath.length);
+        return apiReference(
+          { ...reference?.configuration, url: `${base}${path}` },
+          reference?.customTheme,
+        );
+      });
+    }
+    return this;
+  }
+}
+
+/** API document options. */
+export interface RouterDocumentOptions extends Omit<ZodOpenApiObject, "paths"> {
+  options?: CreateDocumentOptions;
+  reference?: false | RouterReferenceOptions;
+}
+
+/** API reference options. */
+export interface RouterReferenceOptions {
+  /** Path to mount the Scalar UI. Defaults to `{documentPath}/reference`. */
+  path?: string;
+  /** Scalar configuration options (excluding `url`, which is set automatically). */
+  configuration?: Omit<ApiReferenceConfiguration, "url">;
+  /** Custom CSS theme for the Scalar UI. */
+  customTheme?: string;
 }
 
 /**

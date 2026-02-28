@@ -15,12 +15,7 @@ npm i zod zod-openapi
 ```typescript
 import { application, serve } from "serverstruct";
 import { z } from "zod";
-import {
-  createDocument,
-  jsonRequest,
-  jsonResponse,
-  useRouter,
-} from "serverstruct/openapi";
+import { jsonRequest, jsonResponse, useRouter } from "serverstruct/openapi";
 
 const app = application((app) => {
   const router = useRouter(app);
@@ -44,14 +39,10 @@ const app = application((app) => {
     },
   );
 
-  // Serve the OpenAPI document
-  app.get("/docs", () =>
-    createDocument({
-      openapi: "3.1.0",
-      info: { title: "My API", version: "1.0.0" },
-      paths: router.paths(),
-    }),
-  );
+  router.document("/docs", {
+    openapi: "3.1.0",
+    info: { title: "My API", version: "1.0.0" },
+  });
 });
 
 serve(app, { port: 3000 });
@@ -61,30 +52,26 @@ serve(app, { port: 3000 });
 
 `useRouter(app)` returns an `OpenApiRouter` that combines OpenAPI path registration with H3 route registration. Each method registers the operation on the OpenAPI paths and the handler on the H3 app simultaneously.
 
-| Method                                  | Description                                       |
-| --------------------------------------- | ------------------------------------------------- |
-| `get(path, operation, handler)`         | Register a GET route                              |
-| `post(path, operation, handler)`        | Register a POST route                             |
-| `put(path, operation, handler)`         | Register a PUT route                              |
-| `delete(path, operation, handler)`      | Register a DELETE route                           |
-| `patch(path, operation, handler)`       | Register a PATCH route                            |
-| `all(path, operation, handler)`         | Register a route for all standard HTTP methods    |
-| `on(methods, path, operation, handler)` | Register a route for specific HTTP methods        |
-| `route(...routes)`                      | Register standalone [`Route`](#route) definitions |
-| `mount(base, sub)`                      | Mount a sub-app and include its OpenAPI paths     |
-| `paths()`                               | Return the accumulated OpenAPI paths object       |
+| Method     | Description                                                 |
+| ---------- | ----------------------------------------------------------- |
+| `get`      | Register a GET route                                        |
+| `post`     | Register a POST route                                       |
+| `put`      | Register a PUT route                                        |
+| `delete`   | Register a DELETE route                                     |
+| `patch`    | Register a PATCH route                                      |
+| `all`      | Register a route for all standard HTTP methods              |
+| `on`       | Register a route for specific HTTP methods                  |
+| `route`    | Register standalone [`Route`](#route) definitions           |
+| `mount`    | Mount a sub-app and include its OpenAPI paths               |
+| `paths`    | Return the accumulated OpenAPI paths object                 |
+| `document` | Serve the OpenAPI document and optional Scalar reference UI |
 
 Use `router.mount()` to mount an app that has paths defined with `useRouter`.
 
 ```typescript
 import { application, controller, serve } from "serverstruct";
 import { z } from "zod";
-import {
-  createDocument,
-  jsonRequest,
-  jsonResponse,
-  useRouter,
-} from "serverstruct/openapi";
+import { jsonRequest, jsonResponse, useRouter } from "serverstruct/openapi";
 
 const postsController = controller((app) => {
   const router = useRouter(app);
@@ -114,14 +101,10 @@ const app = application((app, box) => {
 
   router.mount("/posts", box.get(postsController));
 
-  // Serve the OpenAPI document
-  app.get("/docs", () =>
-    createDocument({
-      openapi: "3.1.0",
-      info: { title: "My API", version: "1.0.0" },
-      paths: router.paths(),
-    }),
-  );
+  router.document("/docs", {
+    openapi: "3.1.0",
+    info: { title: "My API", version: "1.0.0" },
+  });
 });
 
 serve(app, { port: 3000 });
@@ -383,22 +366,37 @@ See [zod-openapi](https://github.com/samchungy/zod-openapi) for available metada
 
 ## Generating the Document
 
-Use `createDocument` (re-exported from `zod-openapi`) with the accumulated paths:
+`router.document()` mounts a handler that serves the OpenAPI document and a [Scalar](https://github.com/scalar/scalar) API reference UI at `{path}/reference` by default:
 
 ```typescript
-const app = application((app) => {
-  const router = useRouter(app);
-
-  // ... register routes ...
-
-  app.get("/docs", () =>
-    createDocument({
-      openapi: "3.1.0",
-      info: { title: "My API", version: "1.0.0" },
-      paths: router.paths(),
-    }),
-  );
+router.document("/docs", {
+  openapi: "3.1.0",
+  info: { title: "My API", version: "1.0.0" },
 });
+// GET /docs            → OpenAPI document
+// GET /docs/reference  → Scalar UI
+```
+
+Pass `reference: false` to disable the reference UI, or configure it:
+
+```typescript
+router.document("/docs", {
+  openapi: "3.1.0",
+  info: { title: "My API", version: "1.0.0" },
+  reference: { path: "/reference" },
+});
+```
+
+To generate the document manually, use `createDocument` (re-exported from `zod-openapi`) with `router.paths()`:
+
+```typescript
+app.get("/docs", () =>
+  createDocument({
+    openapi: "3.1.0",
+    info: { title: "My API", version: "1.0.0" },
+    paths: router.paths(),
+  }),
+);
 ```
 
 ## Scalar API Reference
@@ -408,6 +406,8 @@ Serve an interactive API documentation UI powered by [Scalar](https://github.com
 ```sh
 npm i @scalar/core
 ```
+
+`router.document()` mounts a Scalar reference at `{path}/reference` by default. To serve it manually, use `apiReference` from `serverstruct/openapi/scalar`:
 
 ```typescript
 import { apiReference } from "serverstruct/openapi/scalar";
@@ -419,7 +419,7 @@ app.get("/reference", () =>
 );
 ```
 
-The `url` should point to the endpoint serving your OpenAPI document (see [Generating the Document](#generating-the-document) below).
+The `url` should point to the endpoint serving your OpenAPI document (see [Generating the Document](#generating-the-document)).
 
 ## Client Type Generation
 
