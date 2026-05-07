@@ -407,6 +407,8 @@ app.get("/docs", () =>
 
 ## Scalar API Reference
 
+> **Experimental:** This API is experimental and may change in future versions.
+
 Serve an interactive API documentation UI powered by [Scalar](https://github.com/scalar/scalar).
 
 ```sh
@@ -420,12 +422,19 @@ import { apiReference } from "serverstruct/openapi/scalar";
 
 app.get("/reference", () =>
   apiReference({
-    url: "http://localhost:3000/docs",
+    config: { url: "http://localhost:3000/docs" },
   }),
 );
 ```
 
-The `url` should point to the endpoint serving your OpenAPI document (see [Generating the Document](#generating-the-document)).
+The `config.url` should point to the endpoint serving your OpenAPI document (see [Generating the Document](#generating-the-document)).
+
+| Option        | Description                                             |
+| ------------- | ------------------------------------------------------- |
+| `config`      | Scalar API reference configuration                      |
+| `pageTitle`   | Page title. Defaults to `"Scalar API Reference"`        |
+| `cdn`         | CDN URL for the standalone bundle. Defaults to jsDelivr |
+| `customTheme` | Custom CSS theme for the Scalar UI                      |
 
 ## Client Type Generation
 

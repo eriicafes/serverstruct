@@ -14,9 +14,9 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: '>=1.39.0 <2.0.0'
         version: 1.39.0
-      '@scalar/core':
-        specifier: '>=0.3.37'
-        version: 0.3.37
+      '@scalar/client-side-rendering':
+        specifier: '>=0.1.7'
+        version: 0.1.7
       getbox:
         specifier: '>=2.0.0 <3.0.0'
         version: 2.0.0
@@ -565,17 +565,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@scalar/core@0.3.37':
-    resolution: {integrity: sha512-cQWMHsGD9jCiYHi91acR3tOsj+qGk+dRQ2W+N5+au1NZ/GkUNT5TUEufekn/sj1S8af+lOnn3y0xXoTI34jCog==}
-    engines: {node: '>=20'}
+  '@scalar/client-side-rendering@0.1.7':
+    resolution: {integrity: sha512-IDzjKF93jrOljlvKBsLHXT1FPWgz56jFrMPC+iLihREp1qH8wF92mG8Zpakw8cURkEuw5WijRk0xNBP2moGyuw==}
+    engines: {node: '>=22'}
 
-  '@scalar/helpers@0.2.11':
-    resolution: {integrity: sha512-Y7DLt1bIZF9dvHzJwSJTcC1lpSr1Tbf4VBhHOCRIHu23Rr7/lhQnddRxFmPV1tZXwEQKz7F7yRrubwCfKPCucw==}
-    engines: {node: '>=20'}
+  '@scalar/helpers@0.6.0':
+    resolution: {integrity: sha512-pfSamAgBxqFeE8IpEG6uGkHlnPhY1CLeOTttV9+vKQbrBk5b7vvyTsUXv0Hz4kNU1TFrxcTTPE+Akn5S+jlTtQ==}
+    engines: {node: '>=22'}
 
-  '@scalar/types@0.6.2':
-    resolution: {integrity: sha512-VWfY/z9R5NT8PpKVmvmIj6QSh56MMcl8x3JsGiNxR+w7txGQEq+QzEl35aU56uSBFmLfPk1oyInoaHhkosKooA==}
-    engines: {node: '>=20'}
+  '@scalar/types@0.9.6':
+    resolution: {integrity: sha512-UaCQQcscFTJdxZREE8KhUdSJgaDlc44TZbmWcZffs4m1hzqOvEI7lEBS13iBpLq7/cxUXFgyJdecywvNqJ0PkA==}
+    engines: {node: '>=22'}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -1792,15 +1792,15 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.34.6':
     optional: true
 
-  '@scalar/core@0.3.37':
+  '@scalar/client-side-rendering@0.1.7':
     dependencies:
-      '@scalar/types': 0.6.2
+      '@scalar/types': 0.9.6
 
-  '@scalar/helpers@0.2.11': {}
+  '@scalar/helpers@0.6.0': {}
 
-  '@scalar/types@0.6.2':
+  '@scalar/types@0.9.6':
     dependencies:
-      '@scalar/helpers': 0.2.11
+      '@scalar/helpers': 0.6.0
       nanoid: 5.1.6
       type-fest: 5.4.4
       zod: 4.3.6

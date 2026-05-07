@@ -27,7 +27,10 @@ import type {
 } from "zod-openapi";
 import { createDocument } from "zod-openapi";
 import { isAnyZodType } from "zod-openapi/api";
-import { apiReference, type ApiReferenceConfiguration } from "./openapi.scalar";
+import {
+  apiReference,
+  type AnyApiReferenceConfiguration,
+} from "./openapi.scalar";
 
 export {
   createDocument,
@@ -643,7 +646,11 @@ export class OpenApiRouter {
       this._app.get(refPath, (event) => {
         const base = event.url.pathname.slice(0, -refPath.length);
         return apiReference(
-          { ...reference?.configuration, url: `${base}${path}` },
+          {
+            config: { ...reference?.configuration, url: `${base}${path}` },
+            pageTitle: reference?.pageTitle,
+            cdn: reference?.cdn,
+          },
           reference?.customTheme,
         );
       });
@@ -663,7 +670,11 @@ export interface RouterReferenceOptions {
   /** Path to mount the Scalar UI. Defaults to `{documentPath}/reference`. */
   path?: string;
   /** Scalar configuration options (excluding `url`, which is set automatically). */
-  configuration?: Omit<ApiReferenceConfiguration, "url">;
+  configuration?: Omit<AnyApiReferenceConfiguration, "url">;
+  /** Page title. Defaults to "Scalar API Reference". */
+  pageTitle?: string;
+  /** CDN URL for the standalone bundle. Defaults to jsDelivr. */
+  cdn?: string;
   /** Custom CSS theme for the Scalar UI. */
   customTheme?: string;
 }

@@ -921,7 +921,7 @@ describe("OpenApiRouter", () => {
     expect(res.status).toBe(404);
   });
 
-  test("document() with custom reference.path", async () => {
+  test("document() with custom reference path", async () => {
     const app = new H3({ silent: true });
     const router = useRouter(app);
 

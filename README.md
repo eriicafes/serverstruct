@@ -340,6 +340,10 @@ const app = application((app) => {
 });
 ```
 
+### Context Options
+
+- `onError` - Custom error message thrown by `get()` when no value is set.
+
 ### Context Methods
 
 - `set(event, value)` - Store a value for the current request

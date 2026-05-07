@@ -1,4 +1,4 @@
-import { Box, Constructor, computed } from "getbox";
+import { Box, computed, Constructor } from "getbox";
 import {
   defineHandler,
   defineMiddleware,
@@ -120,7 +120,9 @@ export function handler<
   Res = unknown,
   Req extends EventHandlerRequest = EventHandlerRequest,
 >(setup: (event: H3Event<Req>, box: Box) => Res) {
-  return computed((box) => defineHandler<Req, Res>((event) => setup(event, box)));
+  return computed((box) =>
+    defineHandler<Req, Res>((event) => setup(event, box)),
+  );
 }
 
 /**
@@ -230,6 +232,11 @@ export class Context<T> {
   #map = new WeakMap<H3Event<any>, T>();
 
   /**
+   * @param options.onError - Custom error message thrown by `get()` when no value is set for the event.
+   */
+  constructor(private options?: { onError?: string }) {}
+
+  /**
    * Sets a value for the given event.
    */
   public set(event: H3Event<any>, value: T) {
@@ -244,7 +251,7 @@ export class Context<T> {
     if (this.#map.has(event)) {
       return this.#map.get(event)!;
     }
-    throw new Error("context not found");
+    throw new Error(this.options?.onError ?? "context not found");
   }
 
   /**
@@ -262,6 +269,7 @@ export class Context<T> {
  * when the request completes. Uses a WeakMap internally to ensure values are
  * garbage collected with their events.
  *
+ * @param options.onError - Custom error message thrown by `get()` when no value is set for the event.
  * @returns A Context instance.
  *
  * @example
@@ -281,6 +289,6 @@ export class Context<T> {
  * });
  * ```
  */
-export function context<T>() {
-  return new Context<T>();
+export function context<T>(options?: { onError?: string }) {
+  return new Context<T>(options);
 }
