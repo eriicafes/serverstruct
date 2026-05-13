@@ -1,5 +1,12 @@
 # serverstruct
 
+## 2.3.0
+
+### Minor Changes
+
+- 09841cf: Add custom error message for missing context value
+- 9121a54: Add `schemas()` for defining route schemas
+
 ## 2.2.0
 
 ### Minor Changes
