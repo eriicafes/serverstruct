@@ -9,6 +9,7 @@ import {
   metadata,
   OpenApiPaths,
   route,
+  schemas,
   useRouter,
 } from "../src/openapi";
 
@@ -1354,6 +1355,64 @@ describe("metadata", () => {
     expect(meta).toStrictEqual({
       description: "A user object",
       example: { id: "1" },
+    });
+  });
+});
+
+describe("schemas", () => {
+  test("returns the provided schemas unchanged", () => {
+    const paramsSchema = z.object({ id: z.string() });
+    const querySchema = z.object({ page: z.coerce.number() });
+    const headersSchema = z.object({ "x-api-key": z.string() });
+    const cookiesSchema = z.object({ session: z.string() });
+    const bodySchema = z.object({ title: z.string() });
+    const responseSchema = z.object({ id: z.string(), title: z.string() });
+    const notFoundSchema = z.object({ message: z.string() });
+
+    const result = schemas({
+      params: paramsSchema,
+      query: querySchema,
+      headers: headersSchema,
+      cookies: cookiesSchema,
+      body: bodySchema,
+      response: responseSchema,
+      notFound: notFoundSchema,
+    });
+
+    expect(result).toStrictEqual({
+      params: paramsSchema,
+      query: querySchema,
+      headers: headersSchema,
+      cookies: cookiesSchema,
+      body: bodySchema,
+      response: responseSchema,
+      notFound: notFoundSchema,
+    });
+  });
+
+  test("allows partial schemas", () => {
+    const bodySchema = z.object({ title: z.string() });
+    const result = schemas({
+      body: bodySchema,
+    });
+
+    expect(result).toStrictEqual({
+      body: bodySchema,
+    });
+  });
+
+  test("allows arbitrary extra schema properties", () => {
+    const responseSchema = z.object({ id: z.string() });
+    const errorSchema = z.object({ message: z.string() });
+
+    const result = schemas({
+      response: responseSchema,
+      notFound: errorSchema,
+    });
+
+    expect(result).toStrictEqual({
+      response: responseSchema,
+      notFound: errorSchema,
     });
   });
 });

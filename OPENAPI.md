@@ -15,7 +15,19 @@ npm i zod zod-openapi
 ```typescript
 import { application, serve } from "serverstruct";
 import { z } from "zod";
-import { jsonRequest, jsonResponse, useRouter } from "serverstruct/openapi";
+import {
+  jsonRequest,
+  jsonResponse,
+  schemas,
+  useRouter,
+} from "serverstruct/openapi";
+
+class PostSchemas {
+  static createPost = schemas({
+    body: z.object({ title: z.string() }),
+    response: z.object({ title: z.string() }),
+  });
+}
 
 const app = application((app) => {
   const router = useRouter(app);
@@ -24,9 +36,9 @@ const app = application((app) => {
     "/posts",
     {
       operationId: "createPost",
-      requestBody: jsonRequest(z.object({ title: z.string() })),
+      requestBody: jsonRequest(PostSchemas.createPost.body),
       responses: {
-        201: jsonResponse(z.object({ title: z.string() }), {
+        201: jsonResponse(PostSchemas.createPost.response, {
           description: "Post created",
         }),
       },
@@ -347,6 +359,39 @@ Build a response object with `application/json` content and optional headers:
     200: jsonResponse(userSchema, {
       description: "User found",
       headers: z.object({ "x-request-id": z.string() }),
+    }),
+  },
+}
+```
+
+### schemas
+
+Create a typed schemas object for grouping route schemas:
+
+```typescript
+class UserSchemas {
+  static getUser = schemas({
+    params: z.object({ id: z.string() }),
+    response: userSchema,
+    notFound: errorSchema,
+  });
+}
+```
+
+Use the grouped schemas when building operations:
+
+```typescript
+{
+  operationId: "getUser",
+  requestParams: {
+    path: UserSchemas.getUser.params,
+  },
+  responses: {
+    200: jsonResponse(UserSchemas.getUser.response, {
+      description: "User found",
+    }),
+    404: jsonResponse(UserSchemas.getUser.notFound, {
+      description: "Not found",
     }),
   },
 }

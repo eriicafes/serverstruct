@@ -14,7 +14,7 @@ import {
   type H3Plugin,
   type RouteOptions,
 } from "h3";
-import { safeParse, ZodError, type output } from "zod";
+import { safeParse, ZodError, ZodType, type output } from "zod";
 import type {
   CreateDocumentOptions,
   ZodOpenApiMediaTypeObject,
@@ -603,12 +603,7 @@ export class OpenApiRouter {
       for (const [base, ctor] of Object.entries(
         arg2 as Record<string, Constructor<H3>>,
       )) {
-        const sub = arg1.get(ctor);
-        const subRouter = (sub as any)[OpenApiRouter.key] as
-          | OpenApiRouter
-          | undefined;
-        this._app.mount(base, sub);
-        if (subRouter) this._paths.mount(base, subRouter._paths);
+        this.mount(base, arg1.get(ctor));
       }
     }
     return this;
@@ -898,4 +893,24 @@ function toOpenApiPath(route: string): string {
       } else return segment;
     })
     .join("/");
+}
+
+/**
+ * Creates a typed schemas object for grouping route schemas together.
+ *
+ * The common keys are `params`, `query`, `headers`, `cookies`, `body`, and
+ * `response`. Other schema properties can also be added.
+ */
+export function schemas<
+  T extends {
+    params?: ZodType;
+    query?: ZodType;
+    headers?: ZodType;
+    cookies?: ZodType;
+    body?: ZodType;
+    response?: ZodType;
+    [k: string]: ZodType | undefined;
+  },
+>(s: T): T {
+  return s;
 }

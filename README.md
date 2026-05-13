@@ -29,10 +29,7 @@ serve(app, { port: 3000 });
 
 ## Application
 
-`application()` creates an H3 instance.
-A Box instance is created for the application and available as the second argument to the function.
-
-You can mount other apps using `app.mount()`:
+Use `application()` to create H3 apps.
 
 ```typescript
 import { H3 } from "h3";
@@ -48,16 +45,10 @@ class UserStore {
 }
 
 // Create an application
-const usersApp = application((app, box) => {
+const app = application((app, box) => {
   const store = box.get(UserStore);
 
   app.get("/", () => store.users);
-});
-
-// Mount in another app
-const app = application((app) => {
-  app.get("/", () => "Hello world!");
-  app.mount("/users", usersApp);
 });
 
 serve(app, { port: 3000 });
@@ -85,30 +76,26 @@ const customApp = application(() => {
 
 ## Controllers
 
-Controllers are apps that are initialized with a parent Box instance, sharing the same dependency container. Use `controller()` to create H3 app constructors:
+Use `controller()` to create H3 app constructors.
+
+You can mount apps using `app.mount()`.
 
 ```typescript
 import { application, controller } from "serverstruct";
 
 // Create a controller
-const usersController = controller((app, box) => {
+const UsersController = controller((app, box) => {
   const store = box.get(UserStore);
 
   app.get("/", () => store.users);
-  app.post("/", async (event) => {
-    const body = await readBody(event);
-    return store.add(body);
-  });
 });
 
 // Use it in your main app
 const app = application((app, box) => {
   const store = box.get(UserStore);
 
-  app.get("/count", () => ({
-    users: store.users.length,
-  }));
-  app.mount("/users", box.get(usersController));
+  app.get("/count", () => store.users.length);
+  app.mount("/users", box.get(UsersController));
 });
 
 serve(app, { port: 3000 });
@@ -122,7 +109,7 @@ Use `handler()` to create H3 handler constructors:
 import { application, handler } from "serverstruct";
 
 // Define a handler
-const getUserHandler = handler((event, box) => {
+const GetUserHandler = handler((event, box) => {
   const store = box.get(UserStore);
 
   const id = event.context.params?.id;
@@ -131,7 +118,7 @@ const getUserHandler = handler((event, box) => {
 
 // Use it in your app
 const app = application((app, box) => {
-  app.get("/users/:id", box.get(getUserHandler));
+  app.get("/users/:id", box.get(GetUserHandler));
 });
 ```
 
@@ -143,7 +130,7 @@ Use `eventHandler()` to create H3 handler constructors with additional options l
 import { application, eventHandler } from "serverstruct";
 
 // Define an event handler with additional options
-const getUserHandler = eventHandler((box) => ({
+const GetUserHandler = eventHandler((box) => ({
   handler(event) {
     const store = box.get(UserStore);
 
@@ -156,7 +143,7 @@ const getUserHandler = eventHandler((box) => ({
 
 // Use it in your app
 const app = application((app, box) => {
-  app.get("/users/:id", box.get(getUserHandler));
+  app.get("/users/:id", box.get(GetUserHandler));
 });
 ```
 
@@ -174,14 +161,14 @@ class Logger {
 }
 
 // Define a middleware
-const logMiddleware = middleware((event, next, box) => {
+const LogMiddleware = middleware((event, next, box) => {
   const logger = box.get(Logger);
   logger.log("Request received");
 });
 
 // Use it in your app
 const app = application((app, box) => {
-  app.use(box.get(logMiddleware));
+  app.use(box.get(LogMiddleware));
   app.get("/", () => "Hello world!");
 });
 ```
@@ -208,26 +195,6 @@ const app = application((app) => {
       console.log("Error:", error);
     }),
   );
-  app.get("/", () => {
-    throw new Error("Oops");
-  });
-});
-```
-
-When the error handler needs access to the Box, wrap it with `middleware()`:
-
-```typescript
-import { onError } from "h3";
-import { application, middleware } from "serverstruct";
-
-const errorHandler = middleware((event, next, box) => {
-  return onError((error) => {
-    console.log("Error:", error);
-  });
-});
-
-const app = application((app, box) => {
-  app.use(box.get(errorHandler));
   app.get("/", () => {
     throw new Error("Oops");
   });
@@ -292,7 +259,7 @@ which is also easier to test.
 import { Box } from "getbox";
 import { controller, serve } from "serverstruct";
 
-export const appController = controller((app) => {
+export const AppController = controller((app) => {
   const store = box.get(UserStore);
 
   app.get("/count", () => store.users.length);
@@ -300,7 +267,7 @@ export const appController = controller((app) => {
 });
 
 const box = new Box();
-const app = box.get(appController);
+const app = box.get(AppController);
 
 serve(app, { port: 3000 });
 ```
