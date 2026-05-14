@@ -15,6 +15,7 @@ npm i zod zod-openapi
 - All `router.mount()` signatures will include OpenAPI paths when the mounted app already has a router attached. Prefer `router.mount(box, { "/prefix": controllerCtor })` when mounting multiple controllers because it also resolves them from the shared Box.
 - Keep routes inline in controllers by default. Use standalone `route()` only when a route genuinely needs extraction.
 - Prefer a class to organize route schemas, using static properties named after each route's `operationId` and created with `schemas()`. Add extra schema properties when a route needs them such as error responses or alternate response shapes.
+- H3 and OpenAPI path syntax differ when working with paths directly. `useRouter()` and `route()` accept H3-style paths and convert them automatically, but `OpenApiPaths` expects OpenAPI-style paths such as `/{id}`.
 
 ## Route Definition
 
