@@ -15,6 +15,16 @@ Serverstruct provides simple helpers for building modular H3 applications with d
 npm i serverstruct h3 getbox
 ```
 
+## AI Skills
+
+Install the serverstruct agent skills with:
+
+```sh
+npx skills add eriicafes/serverstruct
+```
+
+See [skills/README.md](./skills/README.md) for the available skills.
+
 ## Quick Start
 
 ```typescript
