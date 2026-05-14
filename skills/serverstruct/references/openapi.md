@@ -22,6 +22,7 @@ When adding or editing routes, define the contract from the schemas first, then 
 
 - Enrich Zod schemas with useful constraints, defaults, examples, and metadata before wiring them into the route.
 - Put request and response schemas in the route's `schemas()` object, then reference them from `requestParams`, `requestBody`, and `responses`.
+- Use `jsonRequest()` and `jsonResponse()` to specify JSON request and response entries from those schemas.
 - Fill the OpenAPI operation completely: `operationId`, request params, request body, success responses, and expected error responses.
 - Keep the handler aligned with the declared contract by using `ctx.params()`, `ctx.query()`, `ctx.body()`, and `ctx.reply()` or `ctx.validReply()`.
 
