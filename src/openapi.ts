@@ -606,7 +606,7 @@ export class OpenApiRouter {
         | OpenApiRouter
         | undefined;
       this._app.mount(arg1, arg2 as H3);
-      if (subRouter) this._paths.mount(arg1, subRouter._paths);
+      if (subRouter) this._paths.mount(toOpenApiPath(arg1), subRouter._paths);
     } else {
       for (const [base, ctor] of Object.entries(
         arg2 as Record<string, Controller>,

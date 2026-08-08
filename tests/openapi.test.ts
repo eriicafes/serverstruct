@@ -873,6 +873,64 @@ describe("OpenApiRouter", () => {
     expect(router.paths()["/posts"]?.get?.operationId).toBe("getPosts");
   });
 
+  test("mount() converts H3 param syntax in the base to OpenAPI format", async () => {
+    const box = new Box();
+
+    const subApp = controller((app) => {
+      const router = useRouter(app);
+      router.get("/staff", op("listStaff"), () => ({ id: "listStaff" }));
+    });
+
+    const app = application((app, box) => {
+      const router = useRouter(app);
+      router.mount("/:schoolId", box.get(subApp));
+    }, box);
+    const router = useRouter(app);
+
+    // H3 routes on the raw param base.
+    const res = await app.request("/s1/staff");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toStrictEqual({ id: "listStaff" });
+
+    // OpenAPI path uses `{param}` templating, not the H3 `:param` colon syntax.
+    expect(router.paths()["/:schoolId/staff"]).toBeUndefined();
+    expect(router.paths()["/{schoolId}/staff"]?.get?.operationId).toBe(
+      "listStaff",
+    );
+  });
+
+  test("mount() converts param base for each entry when mounting with box", async () => {
+    const box = new Box();
+
+    const staff = controller((app) => {
+      const router = useRouter(app);
+      router.get("/", op("listStaff"), () => ({ id: "listStaff" }));
+    });
+    const students = controller((app) => {
+      const router = useRouter(app);
+      router.get("/", op("listStudents"), () => ({ id: "listStudents" }));
+    });
+
+    const app = application((app, box) => {
+      const router = useRouter(app);
+      router.mount(box, {
+        "/:schoolId/staff": staff,
+        "/:schoolId/students": students,
+      });
+    }, box);
+    const router = useRouter(app);
+
+    expect((await app.request("/s1/staff")).status).toBe(200);
+    expect((await app.request("/s1/students")).status).toBe(200);
+
+    expect(router.paths()["/{schoolId}/staff"]?.get?.operationId).toBe(
+      "listStaff",
+    );
+    expect(router.paths()["/{schoolId}/students"]?.get?.operationId).toBe(
+      "listStudents",
+    );
+  });
+
   test("document() serves the OpenAPI document at path", async () => {
     const app = new H3();
     const router = useRouter(app);
