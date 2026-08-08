@@ -74,7 +74,7 @@
   },
   "homepage": "https://github.com/eriicafes/serverstruct#readme",
   "devDependencies": {
-    "@changesets/cli": "^2.29.8",
+    "@changesets/cli": "^2.31.1",
     "@opentelemetry/sdk-trace-node": "^2.5.1",
     "@types/node": "^25.0.3",
     "@vitest/coverage-v8": "^4.0.16",
