@@ -2,11 +2,12 @@ import { Box, computed, Constructor } from "getbox";
 import {
   defineHandler,
   defineMiddleware,
+  EventHandlerWithFetch,
   EventHandlerObject,
   EventHandlerRequest,
   H3,
   H3Event,
-  Middleware,
+  Middleware as H3Middleware,
   serve,
 } from "h3";
 
@@ -57,6 +58,8 @@ export function application(
   return setup(defaultApp, box) || defaultApp;
 }
 
+export type Controller = Constructor<H3>;
+
 /**
  * Creates an H3 app constructor.
  *
@@ -85,9 +88,13 @@ export function application(
  */
 export function controller(
   setup: (app: H3, box: Box) => H3 | void,
-): Constructor<H3> {
+): Controller {
   return computed((box) => application(setup, box));
 }
+
+export type Handler<Res = unknown> = Constructor<
+  EventHandlerWithFetch<any, Res>
+>;
 
 /**
  * Creates a handler constructor.
@@ -119,11 +126,13 @@ export function controller(
 export function handler<
   Res = unknown,
   Req extends EventHandlerRequest = EventHandlerRequest,
->(setup: (event: H3Event<Req>, box: Box) => Res) {
+>(setup: (event: H3Event<Req>, box: Box) => Res): Handler<Res> {
   return computed((box) =>
     defineHandler<Req, Res>((event) => setup(event, box)),
   );
 }
+
+export type EventHandler<Res = unknown> = Handler<Res>;
 
 /**
  * Creates an event handler constructor from a setup function.
@@ -158,9 +167,11 @@ export function handler<
 export function eventHandler<
   Res = unknown,
   Req extends EventHandlerRequest = EventHandlerRequest,
->(setup: (box: Box) => EventHandlerObject<Req, Res>) {
+>(setup: (box: Box) => EventHandlerObject<Req, Res>): EventHandler<Res> {
   return computed((box) => defineHandler<Req, Res>(setup(box)));
 }
+
+export type Middleware = Constructor<H3Middleware>;
 
 /**
  * Creates a middleware constructor.
@@ -198,7 +209,7 @@ export function middleware(
     next: () => MaybePromise<unknown | undefined>,
     box: Box,
   ) => MaybePromise<unknown | undefined>,
-): Constructor<Middleware> {
+): Middleware {
   return computed((box) =>
     defineMiddleware((event, next) => setup(event, next, box)),
   );

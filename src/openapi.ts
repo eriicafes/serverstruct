@@ -214,6 +214,14 @@ export type RouterContext<
   ): InferResponse<T, S>;
 };
 
+export type Controller = Constructor<H3>;
+export type Route<
+  T extends ZodOpenApiOperationObject = ZodOpenApiOperationObject,
+> = Constructor<RoutePlugin<T>>;
+export type RoutePlugin<_T extends ZodOpenApiOperationObject> = (
+  paths: OpenApiPaths,
+) => H3Plugin;
+
 function createContext<T extends ZodOpenApiOperationObject>(
   operation: T,
 ): RouterContext<T> {
@@ -567,9 +575,9 @@ export class OpenApiRouter {
   }
 
   /**
-   * Registers routes and operations for standalone {@link Route} definitions.
+   * Registers routes and operations for standalone {@link RoutePlugin} definitions.
    */
-  route(...routes: Route<any>[]): this {
+  route(...routes: RoutePlugin<any>[]): this {
     for (const route of routes) {
       this._app.register(route(this._paths));
     }
@@ -591,8 +599,8 @@ export class OpenApiRouter {
    *
    * **Note:** Sub-app options and global hooks are not inherited when mounted consider setting them in the main app directly.
    */
-  mount(box: Box, routes: Record<string, Constructor<H3>>): this;
-  mount(arg1: string | Box, arg2: H3 | Record<string, Constructor<H3>>): this {
+  mount(box: Box, routes: Record<string, Controller>): this;
+  mount(arg1: string | Box, arg2: H3 | Record<string, Controller>): this {
     if (typeof arg1 === "string") {
       const subRouter = (arg2 as any)[OpenApiRouter.key] as
         | OpenApiRouter
@@ -601,7 +609,7 @@ export class OpenApiRouter {
       if (subRouter) this._paths.mount(arg1, subRouter._paths);
     } else {
       for (const [base, ctor] of Object.entries(
-        arg2 as Record<string, Constructor<H3>>,
+        arg2 as Record<string, Controller>,
       )) {
         this.mount(base, arg1.get(ctor));
       }
@@ -700,13 +708,13 @@ export function useRouter(app: H3) {
 }
 
 /**
- * Creates a Route constructor.
+ * Creates a RoutePlugin constructor.
  *
  * `setup` is called once with the Box to resolve dependencies. Return a handler function
  * directly, or an object with a `handler` and other route options (e.g. `meta`, `middleware`).
  *
  * @param options.setup - Returns the handler or `{ handler, ...RouteOptions }`.
- * @returns A Constructor that produces a {@link Route}. Not cached by Box.
+ * @returns A Constructor that produces a {@link RoutePlugin}. Not cached by Box.
  *
  * @example
  * ```ts
@@ -747,7 +755,7 @@ export function route<T extends ZodOpenApiOperationObject>(options: {
           ) => EventHandlerResponse;
         }
       >;
-}): Constructor<Route<T>> {
+}): Route<T> {
   return computed((box) => {
     const { method, path, operation, setup } = options;
     const methods = typeof method === "string" ? [method] : method;
@@ -763,16 +771,6 @@ export function route<T extends ZodOpenApiOperationObject>(options: {
     });
   });
 }
-
-/**
- * A route plugin produced by {@link route}.
- *
- * Call with an {@link OpenApiPaths} instance to get an {@link H3Plugin}
- * that registers the operation and mounts the handler on the app.
- */
-export type Route<_T extends ZodOpenApiOperationObject> = (
-  paths: OpenApiPaths,
-) => H3Plugin;
 
 // ---- Helpers ----
 
