@@ -650,7 +650,7 @@ export class OpenApiRouter {
         const base = event.url.pathname.slice(0, -refPath.length);
         return apiReference(
           {
-            config: { ...reference?.configuration, url: `${base}${path}` },
+            config: { url: `${base}${path}`, ...reference?.configuration },
             pageTitle: reference?.pageTitle,
             cdn: reference?.cdn,
           },
@@ -672,8 +672,8 @@ export interface RouterDocumentOptions extends Omit<ZodOpenApiObject, "paths"> {
 export interface RouterReferenceOptions {
   /** Path to mount the Scalar UI. Defaults to `{documentPath}/reference`. */
   path?: string;
-  /** Scalar configuration options (excluding `url`, which is set automatically). */
-  configuration?: Omit<AnyApiReferenceConfiguration, "url">;
+  /** Scalar configuration options. `url` defaults to the document path. */
+  configuration?: AnyApiReferenceConfiguration;
   /** Page title. Defaults to "Scalar API Reference". */
   pageTitle?: string;
   /** CDN URL for the standalone bundle. Defaults to jsDelivr. */

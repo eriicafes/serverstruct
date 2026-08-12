@@ -999,6 +999,24 @@ describe("OpenApiRouter", () => {
     expect(defaultRes.status).toBe(404);
   });
 
+  test("document() allows reference configuration url to override default", async () => {
+    const app = new H3();
+    const router = useRouter(app);
+
+    router.document("/docs", {
+      openapi: "3.1.0",
+      info: { title: "Test API", version: "1.0.0" },
+      reference: {
+        configuration: { url: "https://example.com/openapi.json" },
+      },
+    });
+
+    const res = await app.request("/docs/reference");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('"url": "https://example.com/openapi.json"');
+  });
+
   test("document() in mounted apps serves correct docs and reference", async () => {
     const box = new Box();
 

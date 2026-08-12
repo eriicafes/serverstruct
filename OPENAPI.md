@@ -438,6 +438,18 @@ router.document("/docs", {
 });
 ```
 
+The Scalar `url` defaults to the mounted document path. Pass `reference.configuration.url` to point the UI at a different OpenAPI document:
+
+```typescript
+router.document("/docs", {
+  openapi: "3.1.0",
+  info: { title: "My API", version: "1.0.0" },
+  reference: {
+    configuration: { url: "https://api.example.com/openapi.json" },
+  },
+});
+```
+
 To generate the document manually, use `createDocument` (re-exported from `zod-openapi`) with `router.paths()`:
 
 ```typescript
