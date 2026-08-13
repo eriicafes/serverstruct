@@ -1,6 +1,6 @@
 import { Box } from "getbox";
 import { H3 } from "h3";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import { application, controller } from "../src";
 import {
@@ -1015,6 +1015,35 @@ describe("OpenApiRouter", () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('"url": "https://example.com/openapi.json"');
+  });
+
+  test("document() passes route options to docs and reference routes", async () => {
+    const app = new H3();
+    const router = useRouter(app);
+    const docsMiddleware = vi.fn();
+    const referenceMiddleware = vi.fn();
+
+    router.document(
+      "/docs",
+      {
+        openapi: "3.1.0",
+        info: { title: "Test API", version: "1.0.0" },
+      },
+      {
+        docs: { middleware: [docsMiddleware] },
+        reference: { middleware: [referenceMiddleware] },
+      },
+    );
+
+    const docsRes = await app.request("/docs");
+    expect(docsRes.status).toBe(200);
+    expect(docsMiddleware).toHaveBeenCalledTimes(1);
+    expect(referenceMiddleware).not.toHaveBeenCalled();
+
+    const referenceRes = await app.request("/docs/reference");
+    expect(referenceRes.status).toBe(200);
+    expect(docsMiddleware).toHaveBeenCalledTimes(1);
+    expect(referenceMiddleware).toHaveBeenCalledTimes(1);
   });
 
   test("document() in mounted apps serves correct docs and reference", async () => {

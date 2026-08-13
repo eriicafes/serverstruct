@@ -438,6 +438,22 @@ router.document("/docs", {
 });
 ```
 
+Pass H3 route options separately for the document and reference routes as a third argument:
+
+```typescript
+router.document(
+  "/docs",
+  {
+    openapi: "3.1.0",
+    info: { title: "My API", version: "1.0.0" },
+  },
+  {
+    docs: { middleware: [authMiddleware] },
+    reference: { middleware: [authMiddleware] },
+  },
+);
+```
+
 The Scalar `url` defaults to the mounted document path. Pass `reference.configuration.url` to point the UI at a different OpenAPI document:
 
 ```typescript

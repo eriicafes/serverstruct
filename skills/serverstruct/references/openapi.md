@@ -109,3 +109,30 @@ const getPost = route({
   },
 });
 ```
+
+## OpenAPI Documents
+
+Use `router.document()` to serve the generated OpenAPI document and the optional Scalar reference UI:
+
+```typescript
+router.document("/docs", {
+  openapi: "3.1.0",
+  info: { title: "My API", version: "1.0.0" },
+});
+```
+
+Pass H3 route options for the document and reference routes as the third argument:
+
+```typescript
+router.document(
+  "/docs",
+  {
+    openapi: "3.1.0",
+    info: { title: "My API", version: "1.0.0" },
+  },
+  {
+    docs: { middleware: [authMiddleware] },
+    reference: { middleware: [authMiddleware] },
+  },
+);
+```

@@ -627,7 +627,11 @@ export class OpenApiRouter {
    * Also mounts a Scalar API reference UI at `{path}/reference` by default.
    * Pass `reference: false` to disable, or provide options to configure it.
    */
-  document(path: string, options: RouterDocumentOptions): this {
+  document(
+    path: string,
+    options: RouterDocumentOptions,
+    opts?: RouterDocumentRouteOptions,
+  ): this {
     if (!path.startsWith("/")) path = "/" + path;
     const { reference, options: docOptions, ...zodOpenApiObject } = options;
 
@@ -642,7 +646,7 @@ export class OpenApiRouter {
           )
         : this._paths.paths;
       return createDocument({ ...zodOpenApiObject, paths }, docOptions);
-    });
+    }, opts?.docs);
 
     if (reference !== false) {
       const refPath = reference?.path || `${path}/reference`;
@@ -656,7 +660,7 @@ export class OpenApiRouter {
           },
           reference?.customTheme,
         );
-      });
+      }, opts?.reference);
     }
     return this;
   }
@@ -666,6 +670,14 @@ export class OpenApiRouter {
 export interface RouterDocumentOptions extends Omit<ZodOpenApiObject, "paths"> {
   options?: CreateDocumentOptions;
   reference?: false | RouterReferenceOptions;
+}
+
+/** API document route options. */
+export interface RouterDocumentRouteOptions {
+  /** H3 route options for the OpenAPI document route. */
+  docs?: RouteOptions;
+  /** H3 route options for the Scalar reference route. */
+  reference?: RouteOptions;
 }
 
 /** API reference options. */
