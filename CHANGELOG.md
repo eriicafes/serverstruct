@@ -1,5 +1,11 @@
 # serverstruct
 
+## 2.4.0
+
+### Minor Changes
+
+- f2e152b: Add route options for `router.document` docs and reference routes
+
 ## 2.3.0
 
 ### Minor Changes
