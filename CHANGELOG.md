@@ -1,5 +1,11 @@
 # serverstruct
 
+## 2.4.1
+
+### Patch Changes
+
+- 4e44f03: Render the Scalar API reference as trusted HTML with current H3 releases.
+
 ## 2.4.0
 
 ### Minor Changes
