@@ -2,7 +2,7 @@ import {
   AnyApiReferenceConfiguration,
   renderApiReference,
 } from "@scalar/client-side-rendering";
-import { html } from "h3";
+import { html, raw } from "h3";
 
 export {
   renderApiReference,
@@ -30,5 +30,5 @@ export function apiReference(
   },
   customTheme?: string,
 ) {
-  return html(renderApiReference(options, customTheme));
+  return html(raw(renderApiReference(options, customTheme)));
 }

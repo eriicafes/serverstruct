@@ -87,7 +87,7 @@
     "@opentelemetry/semantic-conventions": ">=1.39.0 <2.0.0",
     "@scalar/client-side-rendering": ">=0.1.7",
     "getbox": ">=2.0.0 <3.0.0",
-    "h3": ">=2.0.1-rc.6 <3.0.0",
+    "h3": ">=2.0.1-rc.26 <3.0.0",
     "zod": ">=4.0.0 <5.0.0",
     "zod-openapi": ">=5.4.6 <6.0.0"
   }
