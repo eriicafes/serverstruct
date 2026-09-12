@@ -1,5 +1,12 @@
 # serverstruct
 
+## 2.5.0
+
+### Minor Changes
+
+- 661e845: Add `hooks` option to `traceMiddleware` (`onRequestStart`, `onRequestEnd`, `onRequestError`) so callers can hook other instrumentation, like metrics or logging, into the request span lifecycle.
+- 22e82a3: Add `skip` option to `traceMiddleware` to bypass tracing entirely for matching requests.
+
 ## 2.4.2
 
 ### Patch Changes
