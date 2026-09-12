@@ -1,5 +1,11 @@
 # serverstruct
 
+## 2.6.0
+
+### Minor Changes
+
+- dbab422: Add `onStart` and `onRequestOk` hooks to `traceMiddleware`, and a `ctx.durationMs` argument measuring request duration on `onRequestOk`/`onRequestError`/`onRequestEnd`.
+
 ## 2.5.0
 
 ### Minor Changes
