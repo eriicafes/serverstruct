@@ -577,20 +577,24 @@ describe("traceMiddleware", () => {
     });
 
     test("does not run hooks for skipped requests", async () => {
+      const onStart = vi.fn();
       const onRequestStart = vi.fn();
+      const onRequestOk = vi.fn();
       const onRequestEnd = vi.fn();
       const app = new H3();
       app.use(
         traceMiddleware({
           skip: (event) => event.path === "/healthz",
-          hooks: { onRequestStart, onRequestEnd },
+          hooks: { onStart, onRequestStart, onRequestOk, onRequestEnd },
         }),
       );
       app.get("/healthz", () => ({ ok: true }));
 
       await app.request("/healthz");
 
+      expect(onStart).not.toHaveBeenCalled();
       expect(onRequestStart).not.toHaveBeenCalled();
+      expect(onRequestOk).not.toHaveBeenCalled();
       expect(onRequestEnd).not.toHaveBeenCalled();
     });
 
@@ -607,6 +611,103 @@ describe("traceMiddleware", () => {
   });
 
   describe("hooks", () => {
+    test("is not called for skipped requests", async () => {
+      const onStart = vi.fn();
+      const app = new H3();
+      app.use(traceMiddleware({ skip: () => true, hooks: { onStart } }));
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(onStart).not.toHaveBeenCalled();
+    });
+
+    test("calls onStart with just the event, before trace extraction and span creation", async () => {
+      const order: string[] = [];
+      const app = new H3();
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onStart: (event) => {
+              order.push(`start:${event.req.method}`);
+            },
+            onRequestStart: () => {
+              order.push("requestStart");
+            },
+          },
+        }),
+      );
+      app.get("/test", () => {
+        order.push("handler");
+        return { ok: true };
+      });
+
+      await app.request("/test");
+
+      expect(order).toEqual(["start:GET", "requestStart", "handler"]);
+    });
+
+    test("onStart is called with no span argument", async () => {
+      const onStart = vi.fn();
+      const app = new H3();
+      app.use(traceMiddleware({ hooks: { onStart } }));
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(onStart).toHaveBeenCalledTimes(1);
+      expect(onStart.mock.calls[0]).toHaveLength(1);
+    });
+
+    test("onRequestStart, onRequestOk and onRequestEnd run inside the span context", async () => {
+      const contexts: unknown[] = [];
+      const app = new H3();
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestStart: (_event, span) => {
+              contexts.push(trace.getSpan(context.active()) === span);
+            },
+            onRequestOk: (_event, span) => {
+              contexts.push(trace.getSpan(context.active()) === span);
+            },
+            onRequestEnd: (_event, span) => {
+              contexts.push(trace.getSpan(context.active()) === span);
+            },
+          },
+        }),
+      );
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(contexts).toEqual([true, true, true]);
+    });
+
+    test("onRequestError and onRequestEnd run inside the span context on error", async () => {
+      const app = new H3({ silent: true });
+      const matches: boolean[] = [];
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestError: (_event, span) => {
+              matches.push(trace.getSpan(context.active()) === span);
+            },
+            onRequestEnd: (_event, span) => {
+              matches.push(trace.getSpan(context.active()) === span);
+            },
+          },
+        }),
+      );
+      app.get("/throw", () => {
+        throw new Error("boom");
+      });
+
+      await app.request("/throw");
+
+      expect(matches).toEqual([true, true]);
+    });
+
     test("calls onRequestStart with the event and span before the request is handled", async () => {
       const onRequestStart = vi.fn();
       const app = new H3();
@@ -621,11 +722,11 @@ describe("traceMiddleware", () => {
       expect(span.spanContext().spanId).toBeDefined();
     });
 
-    test("calls onRequestEnd with the event, span and response after a normal response", async () => {
-      const onRequestEnd = vi.fn();
+    test("calls onRequestOk with the event, span, response and ctx.durationMs on success", async () => {
+      const onRequestOk = vi.fn();
       const onRequestError = vi.fn();
       const app = new H3();
-      app.use(traceMiddleware({ hooks: { onRequestEnd, onRequestError } }));
+      app.use(traceMiddleware({ hooks: { onRequestOk, onRequestError } }));
       app.get("/test", (event) => {
         event.res.status = 201;
         return { ok: true };
@@ -633,17 +734,62 @@ describe("traceMiddleware", () => {
 
       await app.request("/test");
 
-      expect(onRequestEnd).toHaveBeenCalledTimes(1);
-      const [, , response] = onRequestEnd.mock.calls[0];
+      expect(onRequestOk).toHaveBeenCalledTimes(1);
+      const [, , response, ctx] = onRequestOk.mock.calls[0];
       expect(response.status).toBe(201);
+      expect(typeof ctx.durationMs).toBe("number");
+      expect(ctx.durationMs).toBeGreaterThanOrEqual(0);
       expect(onRequestError).not.toHaveBeenCalled();
     });
 
-    test("calls onRequestError with the event, span and error on thrown error, before rethrowing", async () => {
-      const onRequestError = vi.fn();
-      const onRequestEnd = vi.fn();
+    test("calls onRequestEnd with the response set and error undefined on success, after onRequestOk", async () => {
+      const order: string[] = [];
+      const app = new H3();
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestOk: () => {
+              order.push("ok");
+            },
+            onRequestEnd: (_event, _span, response, error, ctx) => {
+              order.push("end");
+              expect(response?.status).toBe(200);
+              expect(error).toBeUndefined();
+              expect(ctx.durationMs).toBeGreaterThanOrEqual(0);
+            },
+          },
+        }),
+      );
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(order).toEqual(["ok", "end"]);
+    });
+
+    test("calls onRequestError with the event, span, error and ctx.durationMs on thrown error, before onRequestEnd", async () => {
+      const order: string[] = [];
       const app = new H3({ silent: true });
-      app.use(traceMiddleware({ hooks: { onRequestEnd, onRequestError } }));
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestError: (_event, _span, error, ctx) => {
+              order.push("error");
+              expect(error).toBeInstanceOf(Error);
+              expect((error as Error).message).toBe("boom");
+              expect(typeof ctx.durationMs).toBe("number");
+            },
+            onRequestEnd: (_event, _span, response, error) => {
+              order.push("end");
+              expect(response).toBeUndefined();
+              expect((error as Error).message).toBe("boom");
+            },
+            onRequestOk: () => {
+              order.push("ok");
+            },
+          },
+        }),
+      );
       app.get("/throw", () => {
         throw new Error("boom");
       });
@@ -651,11 +797,129 @@ describe("traceMiddleware", () => {
       const res = await app.request("/throw");
       expect(res.status).toBe(500);
 
-      expect(onRequestError).toHaveBeenCalledTimes(1);
-      const [, , error] = onRequestError.mock.calls[0];
-      expect(error).toBeInstanceOf(Error);
+      expect(order).toEqual(["error", "end"]);
+    });
+
+    test("onRequestOk and onRequestEnd share the same ctx.durationMs on success", async () => {
+      let okDuration: number | undefined;
+      let endDuration: number | undefined;
+      const app = new H3();
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestOk: (_event, _span, _response, ctx) => {
+              okDuration = ctx.durationMs;
+            },
+            onRequestEnd: (_event, _span, _response, _error, ctx) => {
+              endDuration = ctx.durationMs;
+            },
+          },
+        }),
+      );
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(okDuration).toBe(endDuration);
+    });
+
+    test("ctx.durationMs is measured from immediately before onStart", async () => {
+      let durationMs: number | undefined;
+      const app = new H3();
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onStart: async () => {
+              await new Promise((resolve) => setTimeout(resolve, 30));
+            },
+            onRequestOk: (_event, _span, _response, ctx) => {
+              durationMs = ctx.durationMs;
+            },
+          },
+        }),
+      );
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(durationMs).toBeGreaterThanOrEqual(30);
+    });
+
+    test("a failing onRequestOk does not trigger onRequestError, and onRequestEnd still runs exactly once", async () => {
+      const onRequestError = vi.fn();
+      const onRequestEnd = vi.fn();
+      const app = new H3({ silent: true });
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestOk: () => {
+              throw new Error("hook failure");
+            },
+            onRequestError,
+            onRequestEnd,
+          },
+        }),
+      );
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(onRequestError).not.toHaveBeenCalled();
+      expect(onRequestEnd).toHaveBeenCalledTimes(1);
+      const [, , response, error] = onRequestEnd.mock.calls[0];
+      expect(response?.status).toBe(200);
+      expect(error).toBeUndefined();
+    });
+
+    test("a failing onRequestError does not trigger onRequestOk, and onRequestEnd still runs exactly once", async () => {
+      const onRequestOk = vi.fn();
+      const onRequestEnd = vi.fn();
+      const app = new H3({ silent: true });
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestOk,
+            onRequestError: () => {
+              throw new Error("hook failure");
+            },
+            onRequestEnd,
+          },
+        }),
+      );
+      app.get("/throw", () => {
+        throw new Error("boom");
+      });
+
+      await app.request("/throw");
+
+      expect(onRequestOk).not.toHaveBeenCalled();
+      expect(onRequestEnd).toHaveBeenCalledTimes(1);
+      const [, , response, error] = onRequestEnd.mock.calls[0];
+      expect(response).toBeUndefined();
       expect((error as Error).message).toBe("boom");
-      expect(onRequestEnd).not.toHaveBeenCalled();
+    });
+
+    test("a failing onRequestEnd does not trigger onRequestOk or onRequestError again", async () => {
+      const onRequestOk = vi.fn();
+      const onRequestError = vi.fn();
+      const app = new H3({ silent: true });
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestOk,
+            onRequestError,
+            onRequestEnd: () => {
+              throw new Error("hook failure");
+            },
+          },
+        }),
+      );
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(onRequestOk).toHaveBeenCalledTimes(1);
+      expect(onRequestError).not.toHaveBeenCalled();
     });
 
     test("awaits async hooks", async () => {
@@ -667,6 +931,10 @@ describe("traceMiddleware", () => {
             onRequestStart: async () => {
               await Promise.resolve();
               order.push("start");
+            },
+            onRequestOk: async () => {
+              await Promise.resolve();
+              order.push("ok");
             },
             onRequestEnd: async () => {
               await Promise.resolve();
@@ -682,7 +950,7 @@ describe("traceMiddleware", () => {
 
       await app.request("/test");
 
-      expect(order).toEqual(["start", "handler", "end"]);
+      expect(order).toEqual(["start", "handler", "ok", "end"]);
     });
   });
 });

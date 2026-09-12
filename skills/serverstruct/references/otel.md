@@ -42,7 +42,8 @@ process.on("SIGTERM", async () => {
 - `headers.request` / `headers.response` to capture selected headers
 - `tracer` to provide a custom tracer
 - `propagation.disabled` or `propagation.propagator` to control trace context extraction
-- `hooks.onRequestStart` / `hooks.onRequestEnd` / `hooks.onRequestError` to hook other instrumentation (metrics, logging) into the request span lifecycle
+- `hooks.onStart` to hook in first, before trace extraction/span creation (e.g. request timing)
+- `hooks.onRequestStart` / `hooks.onRequestOk` / `hooks.onRequestError` / `hooks.onRequestEnd` to hook other instrumentation (metrics, logging) into the request span lifecycle - these run inside the span's context. `onRequestOk` fires only on success, `onRequestError` only on a thrown error; `onRequestEnd` always runs last, exactly once, regardless of whether `onRequestOk`/`onRequestError` threw (`response`/`error` set accordingly). `onRequestOk`/`onRequestError`/`onRequestEnd` all receive a final `ctx: { durationMs }` argument, the time elapsed since the middleware started handling the request
 - `skip(event)` to bypass tracing entirely for matching requests (no span, no hooks)
 
 ## Behavior Notes

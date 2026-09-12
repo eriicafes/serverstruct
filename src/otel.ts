@@ -33,6 +33,16 @@ import {
 import { name, version } from "../package.json";
 
 /**
+ * Context passed to `onRequestOk`, `onRequestError` and `onRequestEnd` hooks.
+ */
+interface TraceRequestContext {
+  /**
+   * Milliseconds from trace start to the handler's response.
+   */
+  durationMs: number;
+}
+
+/**
  * Configuration options for OpenTelemetry trace middleware.
  */
 interface TraceMiddlewareOptions {
@@ -84,34 +94,69 @@ interface TraceMiddlewareOptions {
   };
   /**
    * Lifecycle hooks for integrating other instrumentation (e.g. metrics,
-   * logging) with the request span. Hooks receive the span this middleware
-   * created for the request so callers can read its context (trace/span ID)
-   * or add their own attributes/events without re-implementing the status
-   * and error resolution this middleware already does.
+   * logging).
    */
   hooks?: {
     /**
-     * Called right after the span is started, before the request is handled.
+     * Runs before trace context extraction and span creation.
+     * No span exists yet, so it doesn't run inside the span's context.
+     * A thrown error propagates right away and is never recorded.
+     * Otherwise, trace extraction and span creation continue.
+     */
+    onStart?: (event: H3Event) => void | Promise<void>;
+    /**
+     * Runs after the span starts, before the request is handled.
+     * It runs inside the span's context.
+     * A thrown error skips the request handler and gets recorded on the
+     * span before propagating.
+     * Otherwise the request handler runs next.
      */
     onRequestStart?: (event: H3Event, span: Span) => void | Promise<void>;
     /**
-     * Called after a response is produced and response attributes are set,
-     * before the span ends. Not called when the middleware catches a thrown
-     * error - see `onRequestError` for that case.
+     * Runs for a successful response, before `onRequestEnd`.
+     * It runs inside the span's context.
+     * A thrown error here still lets `onRequestEnd` run first, then
+     * replaces the response, gets recorded on the span, and propagates.
+     * Otherwise `onRequestEnd` runs next.
      */
-    onRequestEnd?: (
+    onRequestOk?: (
       event: H3Event,
       span: Span,
       response: Response,
+      ctx: TraceRequestContext,
     ) => void | Promise<void>;
     /**
-     * Called when the middleware catches a thrown error, after it resolves
-     * the status and records the exception (if any), but before rethrowing.
+     * Runs when a thrown error is caught, before it's rethrown and before
+     * `onRequestEnd`.
+     * It runs inside the span's context.
+     * A thrown error here still lets `onRequestEnd` run first. It then
+     * replaces the original error and gets recorded on the span before
+     * propagating.
+     * Otherwise `onRequestEnd` runs next.
      */
     onRequestError?: (
       event: H3Event,
       span: Span,
       error: unknown,
+      ctx: TraceRequestContext,
+    ) => void | Promise<void>;
+    /**
+     * Runs after `onRequestOk` or `onRequestError` runs or throws, with
+     * exactly one of `response`/`error` set.
+     * It runs inside the span's context.
+     * A thrown error here replaces whatever `onRequestOk` or
+     * `onRequestError` produced. It gets recorded on the span and
+     * propagates.
+     * Otherwise the handler response is returned on success, or the
+     * handler error propagates on failure. If the last hook threw, its own
+     * error propagates instead.
+     */
+    onRequestEnd?: (
+      event: H3Event,
+      span: Span,
+      response: Response | undefined,
+      error: unknown | undefined,
+      ctx: TraceRequestContext,
     ) => void | Promise<void>;
   };
   /**
@@ -195,6 +240,9 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
       return next();
     }
 
+    const requestStart = performance.now();
+    await options?.hooks?.onStart?.(event);
+
     // extract trace from request if not disabled
     const extractedCtx = propagationDisabled
       ? context.active()
@@ -243,12 +291,43 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
       }
     }
 
-    await options?.hooks?.onRequestStart?.(event, span);
-
     try {
       const response = await context.with(spanCtx, async () => {
-        const result = await next();
-        return toResponse(result, event);
+        await options?.hooks?.onRequestStart?.(event, span);
+
+        let response: Response | undefined;
+        let error: unknown;
+        let hasError = false;
+        try {
+          const result = await next();
+          response = await toResponse(result, event);
+        } catch (err) {
+          error = err;
+          hasError = true;
+        }
+
+        const ctx: TraceRequestContext = {
+          durationMs: performance.now() - requestStart,
+        };
+
+        try {
+          if (hasError) {
+            await options?.hooks?.onRequestError?.(event, span, error, ctx);
+          } else {
+            await options?.hooks?.onRequestOk?.(event, span, response!, ctx);
+          }
+        } finally {
+          await options?.hooks?.onRequestEnd?.(
+            event,
+            span,
+            response,
+            error,
+            ctx,
+          );
+        }
+
+        if (hasError) throw error;
+        return response!;
       });
 
       if (recording) {
@@ -269,8 +348,6 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
         }
       }
 
-      await options?.hooks?.onRequestEnd?.(event, span, response);
-
       return response;
     } catch (err) {
       if (recording) {
@@ -287,7 +364,6 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
           });
         }
       }
-      await options?.hooks?.onRequestError?.(event, span, err);
       throw err;
     } finally {
       // end span

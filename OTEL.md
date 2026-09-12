@@ -179,32 +179,49 @@ app.use(
 
 ### Hooks
 
-Use `hooks` to integrate other instrumentation (metrics, logging, etc.) with the request span, without re-implementing the status/error resolution the middleware already does:
+Use `hooks` to integrate other instrumentation (metrics, logging, etc.) with the request span, without re-implementing the status/error resolution the middleware already does. `onRequestStart`, `onRequestOk`, `onRequestEnd` and `onRequestError` run inside the span's context, so `trace.getSpan(context.active())` resolves to it and any spans they start are parented to it:
 
 ```typescript
 app.use(
   traceMiddleware({
     hooks: {
+      // called first, before trace context extraction and span creation -
+      // useful for request timing
+      onStart: (event) => {
+        metrics.requestsReceived.add(1);
+      },
       // called after the span starts, before the request is handled
       onRequestStart: (event, span) => {
         metrics.requestsStarted.add(1, { route: event.path });
       },
-      // called after a response is produced, before the span ends
-      onRequestEnd: (event, span, response) => {
-        const { traceId } = span.spanContext();
-        logger.info("request completed", {
-          traceId,
+      // called after a successful response is produced, before onRequestEnd
+      onRequestOk: (event, span, response, ctx) => {
+        metrics.requestDuration.record(ctx.durationMs, {
+          route: event.path,
           status: response.status,
         });
       },
-      // called when the middleware catches a thrown error, before it rethrows
-      onRequestError: (event, span, error) => {
+      // called when the middleware catches a thrown error, before it
+      // rethrows and before onRequestEnd
+      onRequestError: (event, span, error, ctx) => {
         metrics.requestsFailed.add(1, { route: event.path });
+      },
+      // always called last, exactly once, regardless of whether
+      // onRequestOk/onRequestError threw
+      onRequestEnd: (event, span, response, error, ctx) => {
+        const { traceId } = span.spanContext();
+        logger.info("request completed", {
+          traceId,
+          status: response?.status,
+          durationMs: ctx.durationMs,
+        });
       },
     },
   }),
 );
 ```
+
+`onStart` runs before span creation, so it has no span argument - use `onRequestStart` for hooks that need one. It's not called for skipped requests (see [Skipping Requests](#skipping-requests)). `onRequestOk`, `onRequestError` and `onRequestEnd` receive a final `ctx` argument with `durationMs`, the time elapsed since the middleware started handling the request.
 
 ### Skipping Requests
 
