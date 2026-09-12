@@ -1,5 +1,11 @@
 # serverstruct
 
+## 2.4.2
+
+### Patch Changes
+
+- a9f6363: Fix `traceMiddleware` marking spans as errors for thrown 4xx `HTTPError`s instead of only 5xx. Spans are also now named `{method} {route}` instead of `{method} {pathname}`.
+
 ## 2.4.1
 
 ### Patch Changes
