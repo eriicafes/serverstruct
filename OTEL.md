@@ -206,6 +206,18 @@ app.use(
 );
 ```
 
+### Skipping Requests
+
+Skip tracing entirely for certain requests:
+
+```typescript
+app.use(
+  traceMiddleware({
+    skip: (event) => event.path === "/healthz",
+  }),
+);
+```
+
 ## Creating Child Spans
 
 Create child spans for operations like database queries or external API calls:

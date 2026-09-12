@@ -2,10 +2,10 @@ import {
   Attributes,
   context,
   propagation,
-  type Span,
   SpanKind,
   SpanStatusCode,
   trace,
+  type Span,
   type TextMapGetter,
   type TextMapPropagator,
   type Tracer,
@@ -114,6 +114,12 @@ interface TraceMiddlewareOptions {
       error: unknown,
     ) => void | Promise<void>;
   };
+  /**
+   * Skip tracing for requests matching this predicate (e.g. health checks).
+   * When it returns true, the middleware calls `next()` directly without
+   * creating a span or invoking any hooks.
+   */
+  skip?: (event: H3Event) => boolean;
 }
 
 /**
@@ -185,6 +191,10 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
   };
 
   return defineMiddleware(async (event, next) => {
+    if (options?.skip?.(event)) {
+      return next();
+    }
+
     // extract trace from request if not disabled
     const extractedCtx = propagationDisabled
       ? context.active()

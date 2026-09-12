@@ -561,6 +561,51 @@ describe("traceMiddleware", () => {
     );
   });
 
+  describe("skip", () => {
+    test("does not create a span for requests matching the predicate", async () => {
+      const app = new H3();
+      app.use(traceMiddleware({ skip: (event) => event.path === "/healthz" }));
+      app.get("/healthz", () => ({ ok: true }));
+      app.get("/users/:id", () => ({ ok: true }));
+
+      await app.request("/healthz");
+      await app.request("/users/123");
+
+      const spans = await getFinishedSpans();
+      expect(spans).toHaveLength(1);
+      expect(spans[0].name).toBe("GET /users/:id");
+    });
+
+    test("does not run hooks for skipped requests", async () => {
+      const onRequestStart = vi.fn();
+      const onRequestEnd = vi.fn();
+      const app = new H3();
+      app.use(
+        traceMiddleware({
+          skip: (event) => event.path === "/healthz",
+          hooks: { onRequestStart, onRequestEnd },
+        }),
+      );
+      app.get("/healthz", () => ({ ok: true }));
+
+      await app.request("/healthz");
+
+      expect(onRequestStart).not.toHaveBeenCalled();
+      expect(onRequestEnd).not.toHaveBeenCalled();
+    });
+
+    test("still handles the request normally when skipped", async () => {
+      const app = new H3();
+      app.use(traceMiddleware({ skip: () => true }));
+      app.get("/test", () => ({ ok: true }));
+
+      const res = await app.request("/test");
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+    });
+  });
+
   describe("hooks", () => {
     test("calls onRequestStart with the event and span before the request is handled", async () => {
       const onRequestStart = vi.fn();

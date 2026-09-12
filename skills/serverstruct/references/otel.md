@@ -43,6 +43,7 @@ process.on("SIGTERM", async () => {
 - `tracer` to provide a custom tracer
 - `propagation.disabled` or `propagation.propagator` to control trace context extraction
 - `hooks.onRequestStart` / `hooks.onRequestEnd` / `hooks.onRequestError` to hook other instrumentation (metrics, logging) into the request span lifecycle
+- `skip(event)` to bypass tracing entirely for matching requests (no span, no hooks)
 
 ## Behavior Notes
 
