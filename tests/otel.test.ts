@@ -16,6 +16,7 @@ import {
   ATTR_HTTP_REQUEST_METHOD,
   ATTR_HTTP_RESPONSE_HEADER,
   ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_HTTP_ROUTE,
   ATTR_SERVER_ADDRESS,
   ATTR_URL_FULL,
   ATTR_URL_PATH,
@@ -23,7 +24,7 @@ import {
   ATTR_URL_SCHEME,
   ATTR_USER_AGENT_ORIGINAL,
 } from "@opentelemetry/semantic-conventions";
-import { H3 } from "h3";
+import { H3, HTTPError } from "h3";
 import {
   afterAll,
   afterEach,
@@ -71,6 +72,34 @@ describe("traceMiddleware", () => {
     expect(spans).toHaveLength(1);
     expect(spans[0].name).toBe("GET /users/123");
     expect(spans[0].kind).toBe(SpanKind.SERVER);
+  });
+
+  test("names span using the matched route template, not the concrete path", async () => {
+    const app = new H3();
+    app.use(traceMiddleware());
+    app.get("/users/:id", () => ({ ok: true }));
+
+    await app.request("/users/123");
+    await app.request("/users/456");
+
+    const spans = await getFinishedSpans();
+    expect(spans).toHaveLength(2);
+    expect(spans[0].name).toBe("GET /users/:id");
+    expect(spans[1].name).toBe("GET /users/:id");
+    expect(spans[0].attributes[ATTR_HTTP_ROUTE]).toBe("/users/:id");
+  });
+
+  test("falls back to pathname when no route matches", async () => {
+    const app = new H3();
+    app.use(traceMiddleware());
+    app.get("/known", () => ({ ok: true }));
+
+    await app.request("/unknown");
+
+    const spans = await getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    expect(spans[0].name).toBe("GET /unknown");
+    expect(spans[0].attributes[ATTR_HTTP_ROUTE]).toBeUndefined();
   });
 
   test("creates span with custom name", async () => {
@@ -233,7 +262,7 @@ describe("traceMiddleware", () => {
     expect(spans[0].attributes[ATTR_HTTP_RESPONSE_STATUS_CODE]).toBe(201);
   });
 
-  test("maps status codes < 500 to OK", async () => {
+  test("leaves span status unset for status codes < 500", async () => {
     const app = new H3();
     app.use(traceMiddleware());
     app.get("/ok", () => ({ ok: true }));
@@ -252,9 +281,9 @@ describe("traceMiddleware", () => {
 
     const spans = await getFinishedSpans();
     expect(spans).toHaveLength(3);
-    expect(spans[0].status.code).toBe(SpanStatusCode.OK);
-    expect(spans[1].status.code).toBe(SpanStatusCode.OK);
-    expect(spans[2].status.code).toBe(SpanStatusCode.OK);
+    expect(spans[0].status.code).toBe(SpanStatusCode.UNSET);
+    expect(spans[1].status.code).toBe(SpanStatusCode.UNSET);
+    expect(spans[2].status.code).toBe(SpanStatusCode.UNSET);
   });
 
   test("maps status codes >= 500 to ERROR", async () => {
@@ -319,6 +348,40 @@ describe("traceMiddleware", () => {
     expect(spans[0].status.code).toBe(SpanStatusCode.ERROR);
     // No exception recorded because error was caught before reaching middleware
     expect(spans[0].events).toHaveLength(0);
+  });
+
+  test("thrown HTTPError with status < 500 sets status code without marking span as error", async () => {
+    const app = new H3({ silent: true });
+    app.use(traceMiddleware());
+    app.get("/protected", () => {
+      throw new HTTPError({ status: 401, message: "Unauthorized" });
+    });
+
+    const res = await app.request("/protected");
+    expect(res.status).toBe(401);
+
+    const spans = await getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    expect(spans[0].attributes[ATTR_HTTP_RESPONSE_STATUS_CODE]).toBe(401);
+    expect(spans[0].status.code).toBe(SpanStatusCode.UNSET);
+    expect(spans[0].events).toHaveLength(0);
+  });
+
+  test("thrown HTTPError with status >= 500 marks span as error and records exception", async () => {
+    const app = new H3({ silent: true });
+    app.use(traceMiddleware());
+    app.get("/broken", () => {
+      throw new HTTPError({ status: 503, message: "Unavailable" });
+    });
+
+    const res = await app.request("/broken");
+    expect(res.status).toBe(503);
+
+    const spans = await getFinishedSpans();
+    expect(spans).toHaveLength(1);
+    expect(spans[0].attributes[ATTR_HTTP_RESPONSE_STATUS_CODE]).toBe(503);
+    expect(spans[0].status.code).toBe(SpanStatusCode.ERROR);
+    expect(spans[0].events).toHaveLength(1);
   });
 
   test("records exception when trace middleware is placed after error handler", async () => {

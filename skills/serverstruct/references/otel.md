@@ -45,6 +45,7 @@ process.on("SIGTERM", async () => {
 
 ## Behavior Notes
 
-- 1xx-4xx status codes map to `SpanStatusCode.OK`
+- Default span name is `{method} {route}` using the matched route template (e.g. `GET /users/:id`); falls back to `{method} {pathname}` when no route matched. `http.route` is set when a route matched.
+- 1xx-4xx status codes leave span status unset (`OK` is reserved for apps that set it deliberately)
 - 5xx status codes map to `SpanStatusCode.ERROR`
-- thrown exceptions are recorded and then rethrown
+- Thrown errors are resolved to a status the same way h3 will render them: a thrown `HTTPError` contributes its own `status`, anything else is treated as 500. That status applies the same 1xx-4xx/5xx rule above - a thrown 4xx `HTTPError` (e.g. from auth middleware) does NOT mark the span as an error, only >=500 does. Exceptions are recorded (with stack trace) only for >=500, and are always rethrown regardless.

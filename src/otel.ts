@@ -14,6 +14,7 @@ import {
   ATTR_HTTP_REQUEST_METHOD,
   ATTR_HTTP_RESPONSE_HEADER,
   ATTR_HTTP_RESPONSE_STATUS_CODE,
+  ATTR_HTTP_ROUTE,
   ATTR_SERVER_ADDRESS,
   ATTR_URL_FULL,
   ATTR_URL_PATH,
@@ -21,7 +22,13 @@ import {
   ATTR_URL_SCHEME,
   ATTR_USER_AGENT_ORIGINAL,
 } from "@opentelemetry/semantic-conventions";
-import { defineMiddleware, getRequestURL, H3Event, toResponse } from "h3";
+import {
+  defineMiddleware,
+  getRequestURL,
+  H3Event,
+  HTTPError,
+  toResponse,
+} from "h3";
 import { name, version } from "../package.json";
 
 /**
@@ -30,7 +37,8 @@ import { name, version } from "../package.json";
 interface TraceMiddlewareOptions {
   /**
    * Custom function to generate span names from H3 events.
-   * Defaults to `{METHOD} {pathname}` (e.g., "GET /users/123").
+   * Defaults to `{METHOD} {route}` (e.g., "GET /users/:id"), falling back to
+   * `{METHOD} {pathname}` when no route has matched.
    */
   spanName?: (event: H3Event) => string;
   /**
@@ -88,14 +96,21 @@ interface TraceMiddlewareOptions {
  * - `server.address` - Server host
  * - `user_agent.original` - User agent header
  * - `http.response.status_code` - Response status code
+ * - `http.route` - Matched route template, when available
  * - `http.request.header.<name>` - Custom request headers
  * - `http.response.header.<name>` - Custom response headers
  *
  * Exceptions are recorded with full details when errors occur.
  *
  * Status codes are mapped to span statuses:
- * - 1xx-4xx: SpanStatusCode.OK
+ * - 1xx-4xx: left unset (per OpenTelemetry conventions, `OK` is reserved for
+ *   applications that set it deliberately)
  * - 5xx: SpanStatusCode.ERROR
+ *
+ * This applies uniformly whether the response was returned normally or the
+ * status came from a thrown `HTTPError` (status defaults to 500 for other
+ * thrown errors), so span status stays consistent regardless of whether an
+ * `onError` handler downstream converts the error into a response.
  *
  * The middleware supports trace context propagation for distributed tracing across
  * microservices using OpenTelemetry propagators.
@@ -146,9 +161,12 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
     if (url.username) url.username = "REDACTED";
     if (url.password) url.password = "REDACTED";
 
+    const route = event.context.matchedRoute?.route;
+
     // start span
     const span = tracer.startSpan(
-      options?.spanName?.(event) ?? `${event.req.method} ${url.pathname}`,
+      options?.spanName?.(event) ??
+        `${event.req.method} ${route ?? url.pathname}`,
       { kind: SpanKind.SERVER },
       extractedCtx,
     );
@@ -159,15 +177,12 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
       span.setAttribute(ATTR_HTTP_REQUEST_METHOD, event.req.method);
       span.setAttribute(ATTR_URL_FULL, event.req.url);
       span.setAttribute(ATTR_URL_PATH, url.pathname);
-      if (url.search) {
-        span.setAttribute(ATTR_URL_QUERY, url.search.slice(1));
-      }
+      if (url.search) span.setAttribute(ATTR_URL_QUERY, url.search.slice(1));
       span.setAttribute(ATTR_URL_SCHEME, url.protocol.replace(":", ""));
       span.setAttribute(ATTR_SERVER_ADDRESS, url.host);
+      if (route) span.setAttribute(ATTR_HTTP_ROUTE, route);
       const userAgent = event.req.headers.get("user-agent");
-      if (userAgent) {
-        span.setAttribute(ATTR_USER_AGENT_ORIGINAL, userAgent);
-      }
+      if (userAgent) span.setAttribute(ATTR_USER_AGENT_ORIGINAL, userAgent);
 
       // set request headers attributes
       for (const header of requestHeaderAttrs) {
@@ -194,10 +209,9 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
       if (recording) {
         // set response attributes
         span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
-        span.setStatus({
-          code:
-            response.status < 500 ? SpanStatusCode.OK : SpanStatusCode.ERROR,
-        });
+        if (response.status >= 500) {
+          span.setStatus({ code: SpanStatusCode.ERROR });
+        }
 
         // set response headers attributes
         for (const header of responseHeaderAttrs) {
@@ -213,13 +227,18 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
       return response;
     } catch (err) {
       if (recording) {
-        // record exception
-        const error = err instanceof Error ? err : new Error(String(err));
-        span.recordException(error);
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: (err as Error)?.message,
-        });
+        // resolve the status h3 will use to render this error, since it
+        // hasn't rendered a response yet at this point in the middleware stack
+        const status = HTTPError.isError(err) ? err.status : 500;
+        span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, status);
+        if (status >= 500) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          span.recordException(error);
+          span.setStatus({
+            code: SpanStatusCode.ERROR,
+            message: (err as Error)?.message,
+          });
+        }
       }
       throw err;
     } finally {

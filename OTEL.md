@@ -67,27 +67,34 @@ The middleware automatically captures the following [OpenTelemetry semantic conv
 - `server.address` - Server host
 - `user_agent.original` - User agent header (if present)
 - `http.response.status_code` - Response status code
+- `http.route` - Matched route template, when available (e.g. `/users/:id`)
+
+### Span Naming
+
+Spans are named `{method} {route}` by default (e.g. `GET /users/:id`), using the route template h3 matched before middleware runs. If no route matched (e.g. a 404), the span falls back to `{method} {pathname}`.
 
 ### Span Status Mapping
 
 Status codes are automatically mapped to span statuses:
 
-- 1xx-4xx: `SpanStatusCode.OK`
+- 1xx-4xx: left unset (per the [OpenTelemetry HTTP semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-spans/), `OK` is reserved for applications that set it deliberately)
 - 5xx: `SpanStatusCode.ERROR`
 
 ### Exception Recording
 
-Exceptions thrown in route handlers are automatically recorded with full stack traces and set the span status to ERROR. The middleware rethrows errors after recording them, so they will still propagate to error handlers.
+The middleware sees thrown errors before h3 has turned them into a response, so it resolves the status the same way h3 will: a thrown `HTTPError` contributes its own `status`, any other thrown value is treated as a 500. That status is recorded on the span either way. Only statuses >= 500 record the exception (with full stack trace) and set the span status to ERROR - a thrown `HTTPError` with a 4xx status (e.g. a 401 from auth middleware) is recorded as a normal 4xx response, not a span error. The middleware always rethrows after recording, so errors still propagate to error handlers.
 
 **Middleware Placement**:
 
 - Place the tracing middleware **after** error handlers to record exceptions - the trace middleware will catch errors first, record them, then rethrow for error handlers.
 - Place the tracing middleware **before** error handlers to skip exception recording - error handlers will catch errors before they reach the trace middleware.
-- In all cases, span status is still set based on the HTTP response status code (1xx-4xx = OK, 5xx = ERROR).
+- In all cases, span status is based on the status the trace middleware resolves when it catches the error, not on what a downstream `onError` handler later returns.
 
 ## Configuration
 
 ### Custom Span Names
+
+The default `{method} {route}` naming (see [Span Naming](#span-naming)) covers most use cases. Provide `spanName` only when you need something different:
 
 ```typescript
 app.use(
