@@ -300,6 +300,7 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
         let hasError = false;
         try {
           const result = await next();
+          if (result instanceof Error) throw result;
           response = await toResponse(result, event);
         } catch (err) {
           error = err;
