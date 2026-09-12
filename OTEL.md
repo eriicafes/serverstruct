@@ -177,6 +177,35 @@ app.use(
 );
 ```
 
+### Hooks
+
+Use `hooks` to integrate other instrumentation (metrics, logging, etc.) with the request span, without re-implementing the status/error resolution the middleware already does:
+
+```typescript
+app.use(
+  traceMiddleware({
+    hooks: {
+      // called after the span starts, before the request is handled
+      onRequestStart: (event, span) => {
+        metrics.requestsStarted.add(1, { route: event.path });
+      },
+      // called after a response is produced, before the span ends
+      onRequestEnd: (event, span, response) => {
+        const { traceId } = span.spanContext();
+        logger.info("request completed", {
+          traceId,
+          status: response.status,
+        });
+      },
+      // called when the middleware catches a thrown error, before it rethrows
+      onRequestError: (event, span, error) => {
+        metrics.requestsFailed.add(1, { route: event.path });
+      },
+    },
+  }),
+);
+```
+
 ## Creating Child Spans
 
 Create child spans for operations like database queries or external API calls:

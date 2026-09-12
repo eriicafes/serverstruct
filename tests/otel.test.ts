@@ -560,4 +560,84 @@ describe("traceMiddleware", () => {
       parentSpan!.spanContext().spanId,
     );
   });
+
+  describe("hooks", () => {
+    test("calls onRequestStart with the event and span before the request is handled", async () => {
+      const onRequestStart = vi.fn();
+      const app = new H3();
+      app.use(traceMiddleware({ hooks: { onRequestStart } }));
+      app.get("/test", () => ({ ok: true }));
+
+      await app.request("/test");
+
+      expect(onRequestStart).toHaveBeenCalledTimes(1);
+      const [event, span] = onRequestStart.mock.calls[0];
+      expect(event.req.method).toBe("GET");
+      expect(span.spanContext().spanId).toBeDefined();
+    });
+
+    test("calls onRequestEnd with the event, span and response after a normal response", async () => {
+      const onRequestEnd = vi.fn();
+      const onRequestError = vi.fn();
+      const app = new H3();
+      app.use(traceMiddleware({ hooks: { onRequestEnd, onRequestError } }));
+      app.get("/test", (event) => {
+        event.res.status = 201;
+        return { ok: true };
+      });
+
+      await app.request("/test");
+
+      expect(onRequestEnd).toHaveBeenCalledTimes(1);
+      const [, , response] = onRequestEnd.mock.calls[0];
+      expect(response.status).toBe(201);
+      expect(onRequestError).not.toHaveBeenCalled();
+    });
+
+    test("calls onRequestError with the event, span and error on thrown error, before rethrowing", async () => {
+      const onRequestError = vi.fn();
+      const onRequestEnd = vi.fn();
+      const app = new H3({ silent: true });
+      app.use(traceMiddleware({ hooks: { onRequestEnd, onRequestError } }));
+      app.get("/throw", () => {
+        throw new Error("boom");
+      });
+
+      const res = await app.request("/throw");
+      expect(res.status).toBe(500);
+
+      expect(onRequestError).toHaveBeenCalledTimes(1);
+      const [, , error] = onRequestError.mock.calls[0];
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("boom");
+      expect(onRequestEnd).not.toHaveBeenCalled();
+    });
+
+    test("awaits async hooks", async () => {
+      const order: string[] = [];
+      const app = new H3();
+      app.use(
+        traceMiddleware({
+          hooks: {
+            onRequestStart: async () => {
+              await Promise.resolve();
+              order.push("start");
+            },
+            onRequestEnd: async () => {
+              await Promise.resolve();
+              order.push("end");
+            },
+          },
+        }),
+      );
+      app.get("/test", () => {
+        order.push("handler");
+        return { ok: true };
+      });
+
+      await app.request("/test");
+
+      expect(order).toEqual(["start", "handler", "end"]);
+    });
+  });
 });

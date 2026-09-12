@@ -2,6 +2,7 @@ import {
   Attributes,
   context,
   propagation,
+  type Span,
   SpanKind,
   SpanStatusCode,
   trace,
@@ -80,6 +81,38 @@ interface TraceMiddlewareOptions {
      * Defaults to the global OpenTelemetry propagator.
      */
     propagator?: TextMapPropagator;
+  };
+  /**
+   * Lifecycle hooks for integrating other instrumentation (e.g. metrics,
+   * logging) with the request span. Hooks receive the span this middleware
+   * created for the request so callers can read its context (trace/span ID)
+   * or add their own attributes/events without re-implementing the status
+   * and error resolution this middleware already does.
+   */
+  hooks?: {
+    /**
+     * Called right after the span is started, before the request is handled.
+     */
+    onRequestStart?: (event: H3Event, span: Span) => void | Promise<void>;
+    /**
+     * Called after a response is produced and response attributes are set,
+     * before the span ends. Not called when the middleware catches a thrown
+     * error - see `onRequestError` for that case.
+     */
+    onRequestEnd?: (
+      event: H3Event,
+      span: Span,
+      response: Response,
+    ) => void | Promise<void>;
+    /**
+     * Called when the middleware catches a thrown error, after it resolves
+     * the status and records the exception (if any), but before rethrowing.
+     */
+    onRequestError?: (
+      event: H3Event,
+      span: Span,
+      error: unknown,
+    ) => void | Promise<void>;
   };
 }
 
@@ -200,6 +233,8 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
       }
     }
 
+    await options?.hooks?.onRequestStart?.(event, span);
+
     try {
       const response = await context.with(spanCtx, async () => {
         const result = await next();
@@ -224,6 +259,8 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
         }
       }
 
+      await options?.hooks?.onRequestEnd?.(event, span, response);
+
       return response;
     } catch (err) {
       if (recording) {
@@ -240,6 +277,7 @@ export function traceMiddleware(options?: TraceMiddlewareOptions) {
           });
         }
       }
+      await options?.hooks?.onRequestError?.(event, span, err);
       throw err;
     } finally {
       // end span

@@ -42,6 +42,7 @@ process.on("SIGTERM", async () => {
 - `headers.request` / `headers.response` to capture selected headers
 - `tracer` to provide a custom tracer
 - `propagation.disabled` or `propagation.propagator` to control trace context extraction
+- `hooks.onRequestStart` / `hooks.onRequestEnd` / `hooks.onRequestError` to hook other instrumentation (metrics, logging) into the request span lifecycle
 
 ## Behavior Notes
 
