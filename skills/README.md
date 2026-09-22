@@ -10,6 +10,7 @@ npx skills add eriicafes/serverstruct
 
 ## Available Skills
 
-| Skill | Description |
-|---|---|
-| [`serverstruct`](./serverstruct/SKILL.md) | Application structure, Box DI, handlers, middleware, context, OpenAPI routes, and OpenTelemetry tracing |
+| Skill                                                   | Description                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [`serverstruct`](./serverstruct/SKILL.md)               | Application structure, Box DI, handlers, middleware, context, OpenAPI routes, and OpenTelemetry tracing |
+| [`create-serverstruct`](./create-serverstruct/SKILL.md) | Bootstrap and maintain an opinionated serverstruct application structure                                |

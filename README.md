@@ -17,13 +17,13 @@ npm i serverstruct h3 getbox
 
 ## AI Skills
 
-Install the serverstruct agent skills with:
+Install both serverstruct agent skills with:
 
 ```sh
-npx skills add eriicafes/serverstruct
+npx skills add eriicafes/serverstruct --all
 ```
 
-See [skills/README.md](./skills/README.md) for the available skills.
+Use [`create-serverstruct`](./skills/create-serverstruct/SKILL.md) when bootstrapping a new serverstruct project.
 
 ## Quick Start
 
